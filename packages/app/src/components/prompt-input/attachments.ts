@@ -6,7 +6,24 @@ import { uuid } from "@/utils/uuid"
 import { getCursorPosition } from "./editor-dom"
 
 export const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
-export const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
+export const ACCEPTED_AUDIO_TYPES = ["audio/wav", "audio/mp3", "audio/aiff", "audio/aac", "audio/ogg", "audio/flac", "audio/mpeg"]
+export const ACCEPTED_VIDEO_TYPES = [
+  "video/mp4",
+  "video/mpeg",
+  "video/mov",
+  "video/avi",
+  "video/x-flv",
+  "video/mpg",
+  "video/webm",
+  "video/wmv",
+  "video/3gpp",
+]
+export const ACCEPTED_FILE_TYPES = [
+  ...ACCEPTED_IMAGE_TYPES,
+  "application/pdf",
+  ...ACCEPTED_AUDIO_TYPES,
+  ...ACCEPTED_VIDEO_TYPES,
+]
 const LARGE_PASTE_CHARS = 8000
 const LARGE_PASTE_BREAKS = 120
 

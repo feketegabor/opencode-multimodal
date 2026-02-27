@@ -15,6 +15,8 @@ bun install
 bun run --cwd packages/desktop tauri dev
 ```
 
+For Windows-specific setup and troubleshooting, see [docs/windows-dev-setup.md](./docs/windows-dev-setup.md).
+
 ## Build
 
 ```bash

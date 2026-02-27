@@ -682,7 +682,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   const attachments = createMemo(() =>
     files()?.filter((f) => {
       const mime = f.mime
-      return mime.startsWith("image/") || mime === "application/pdf"
+      return mime.startsWith("image/") || mime === "application/pdf" || mime.startsWith("audio/") || mime.startsWith("video/")
     }),
   )
 
@@ -764,6 +764,11 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
                     src={file.url}
                     alt={file.filename ?? i18n.t("ui.message.attachment.alt")}
                   />
+                </Show>
+                <Show when={file.filename}>
+                  <div data-slot="user-message-attachment-name">
+                    <span>{file.filename}</span>
+                  </div>
                 </Show>
               </div>
             )}
