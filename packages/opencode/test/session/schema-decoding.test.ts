@@ -15,20 +15,20 @@ import { WorkspaceID } from "../../src/control-plane/schema"
 // schema we assert:
 //   1. The Effect decoder (`Schema.decodeUnknownSync`) accepts valid input.
 //   2. The derived Zod (`X.zod.parse`) accepts the same input and returns the
-//      same shape.
-//   3. Clearly-invalid input is rejected by both paths.
+//      same shape for schemas that still expose Zod statics.
+//   3. Clearly-invalid input is rejected by both paths where both exist.
 //
 // The point is to lock down the Schema <-> Zod bridge so a future edit to
 // any input schema can't silently drop or widen a field on one side.
 
 // Representative valid IDs — the branded schemas require the right prefix
 // (see src/id/id.ts).
-const sessionID = SessionID.zod.parse("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2K")
-const sessionIDChild = SessionID.zod.parse("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2L")
-const messageID = MessageID.zod.parse("msg_01J5Y5H0AH4Q4NXJ6P4C3P5V2M")
-const partID = PartID.zod.parse("prt_01J5Y5H0AH4Q4NXJ6P4C3P5V2N")
-const projectID = ProjectID.zod.parse("proj-alpha")
-const workspaceID = WorkspaceID.zod.parse("wrk-primary")
+const sessionID = Schema.decodeUnknownSync(SessionID)("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2K")
+const sessionIDChild = Schema.decodeUnknownSync(SessionID)("ses_01J5Y5H0AH4Q4NXJ6P4C3P5V2L")
+const messageID = Schema.decodeUnknownSync(MessageID)("msg_01J5Y5H0AH4Q4NXJ6P4C3P5V2M")
+const partID = Schema.decodeUnknownSync(PartID)("prt_01J5Y5H0AH4Q4NXJ6P4C3P5V2N")
+const projectID = ProjectID.make("proj-alpha")
+const workspaceID = Schema.decodeUnknownSync(WorkspaceID)("wrk-primary")
 
 function decodeUnknown<S extends Schema.Top>(schema: S) {
   const decode = Schema.decodeUnknownSync(schema as any)
@@ -78,6 +78,26 @@ describe("Session.Info", () => {
         snapshot: "snap-1",
         diff: "diff-1",
       },
+    }
+    expect(decode(input)).toEqual(input)
+    expect(Session.Info.zod.parse(input)).toEqual(input)
+  })
+
+  test("accepts migrated summary diffs without file details", () => {
+    const input = {
+      id: sessionID,
+      slug: "legacy-diff",
+      projectID,
+      directory: "/tmp/proj",
+      title: "Legacy diff",
+      version: "0.1.0",
+      summary: {
+        additions: 1,
+        deletions: 0,
+        files: 1,
+        diffs: [{ additions: 1, deletions: 0 }],
+      },
+      time: { created: 1, updated: 2 },
     }
     expect(decode(input)).toEqual(input)
     expect(Session.Info.zod.parse(input)).toEqual(input)
@@ -201,14 +221,11 @@ describe("SessionRevert.RevertInput", () => {
   test("messageID is required, partID is optional", () => {
     const withPart = { sessionID, messageID, partID }
     expect(decode(withPart)).toEqual(withPart)
-    expect(SessionRevert.RevertInput.zod.parse(withPart)).toEqual(withPart)
 
     const noPart = { sessionID, messageID }
     expect(decode(noPart)).toEqual(noPart)
-    expect(SessionRevert.RevertInput.zod.parse(noPart)).toEqual(noPart)
 
     expect(() => decode({ sessionID })).toThrow()
-    expect(() => SessionRevert.RevertInput.zod.parse({ sessionID })).toThrow()
   })
 })
 
@@ -227,7 +244,6 @@ describe("SessionStatus.Info", () => {
   test("idle / busy discriminators", () => {
     expect(decode({ type: "idle" })).toEqual({ type: "idle" })
     expect(decode({ type: "busy" })).toEqual({ type: "busy" })
-    expect(SessionStatus.Info.zod.parse({ type: "idle" })).toEqual({ type: "idle" })
   })
 
   test("retry carries attempt/message/action/next", () => {
@@ -246,12 +262,10 @@ describe("SessionStatus.Info", () => {
       next: 500,
     }
     expect(decode(input)).toEqual(input)
-    expect(SessionStatus.Info.zod.parse(input)).toEqual(input)
   })
 
   test("rejects unknown type", () => {
     expect(() => decode({ type: "bogus" })).toThrow()
-    expect(() => SessionStatus.Info.zod.parse({ type: "bogus" })).toThrow()
   })
 })
 
@@ -261,7 +275,6 @@ describe("Todo.Info", () => {
   test("three-field round-trip", () => {
     const input = { content: "do a thing", status: "pending", priority: "high" }
     expect(decode(input)).toEqual(input)
-    expect(Todo.Info.zod.parse(input)).toEqual(input)
   })
 })
 
