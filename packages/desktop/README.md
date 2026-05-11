@@ -9,8 +9,6 @@ bun install
 bun dev
 ```
 
-For Windows-specific setup and troubleshooting, see [docs/windows-dev-setup.md](./docs/windows-dev-setup.md).
-
 ## Build
 
 Run the `build` script to build the app's JS assets, then `package` to
