@@ -1926,6 +1926,184 @@ it.instance(
 )
 
 it.instance(
+  "resolves audio file URLs to data URLs",
+  () =>
+    Effect.gen(function* () {
+      const { directory: dir } = yield* TestInstance
+      const file = path.join(dir, "sound.mp3")
+      yield* writeText(file, "ID3\0\0\0\0")
+
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({})
+      const message = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "file", mime: "audio/mpeg", url: pathToFileURL(file).href, filename: "sound.mp3" }],
+      })
+
+      const stored = yield* MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+      const part = stored.parts.find(
+        (part): part is MessageV2.FilePart => part.type === "file" && part.filename === "sound.mp3",
+      )
+
+      expect(part?.mime).toBe("audio/mpeg")
+      expect(part?.url.startsWith("data:audio/mpeg;base64,")).toBe(true)
+
+      yield* sessions.remove(session.id)
+    }),
+  { config: cfg },
+)
+
+it.instance(
+  "resolves video file URLs to data URLs",
+  () =>
+    Effect.gen(function* () {
+      const { directory: dir } = yield* TestInstance
+      const file = path.join(dir, "clip.mp4")
+      yield* Effect.promise(() =>
+        Bun.write(file, Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0])),
+      )
+
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({})
+      const message = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "file", mime: "video/mp4", url: pathToFileURL(file).href, filename: "clip.mp4" }],
+      })
+
+      const stored = yield* MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+      const part = stored.parts.find(
+        (part): part is MessageV2.FilePart => part.type === "file" && part.filename === "clip.mp4",
+      )
+
+      expect(part?.mime).toBe("video/mp4")
+      expect(part?.url.startsWith("data:video/mp4;base64,")).toBe(true)
+
+      yield* sessions.remove(session.id)
+    }),
+  { config: cfg },
+)
+
+it.instance(
+  "rejects oversized audio and video attachments",
+  () =>
+    Effect.gen(function* () {
+      const { directory: dir } = yield* TestInstance
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const audio = path.join(dir, "large-sound.mp3")
+      const video = path.join(dir, "large-clip.mp4")
+      yield* writeText(audio, "ID3\0\0\0\0")
+      yield* Effect.promise(() =>
+        Bun.write(video, Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0])),
+      )
+
+      yield* Effect.forEach(
+        [
+          {
+            filename: "large-sound.mp3",
+            mime: "audio/mpeg",
+            expectedMime: "audio/mpeg",
+            url: pathToFileURL(audio).href,
+          },
+          {
+            filename: "large-clip.mp4",
+            mime: "video/mp4",
+            expectedMime: "video/mp4",
+            url: pathToFileURL(video).href,
+          },
+          {
+            filename: "direct-sound.mp3",
+            mime: "audio/mpeg",
+            expectedMime: "audio/mpeg",
+            url: `data:audio/mpeg;base64,${Buffer.from("oversized-audio").toString("base64")}`,
+          },
+          {
+            filename: "direct-clip.mp4",
+            mime: "video/mp4",
+            expectedMime: "video/mp4",
+            url: `data:video/mp4;base64,${Buffer.from("oversized-video").toString("base64")}`,
+          },
+          {
+            filename: "generic-direct-clip.mp4",
+            mime: "application/octet-stream",
+            expectedMime: "video/mp4",
+            url: `data:video/mp4;base64,${Buffer.from("oversized-generic-video").toString("base64")}`,
+          },
+          {
+            filename: "uppercase-direct-clip.mp4",
+            mime: "application/octet-stream",
+            expectedMime: "video/mp4",
+            url: `data:Video/MP4;base64,${Buffer.from("oversized-uppercase-video").toString("base64")}`,
+          },
+        ],
+        Effect.fnUntraced(function* (item) {
+          const session = yield* sessions.create({})
+          const exit = yield* prompt
+            .prompt({
+              sessionID: session.id,
+              agent: "build",
+              noReply: true,
+              parts: [{ type: "file", mime: item.mime, url: item.url, filename: item.filename }],
+            })
+            .pipe(Effect.exit)
+
+          expect(Exit.isFailure(exit)).toBe(true)
+          if (Exit.isFailure(exit)) {
+            const message = String(Cause.squash(exit.cause))
+            expect(message).toContain(item.filename)
+            expect(message).toContain(item.expectedMime)
+            expect(message).toContain("8")
+            expect(Cause.hasDies(exit.cause)).toBe(false)
+          }
+
+          yield* sessions.remove(session.id)
+        }),
+      )
+
+      const session = yield* sessions.create({})
+      const exit = yield* prompt
+        .prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: yield* prompt.resolvePromptParts("Read @large-sound.mp3"),
+        })
+        .pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const message = String(Cause.squash(exit.cause))
+        expect(message).toContain("large-sound.mp3")
+        expect(message).toContain("audio/mpeg")
+        expect(message).toContain("8")
+        expect(Cause.hasDies(exit.cause)).toBe(false)
+      }
+
+      yield* sessions.remove(session.id)
+    }),
+  {
+    git: true,
+    config: {
+      ...cfg,
+      attachment: {
+        audio: {
+          max_base64_bytes: 8,
+        },
+        video: {
+          max_base64_bytes: 8,
+        },
+      },
+    },
+  },
+)
+
+it.instance(
   "resolves configured reference mentions before workspace paths and agents",
   () =>
     Effect.gen(function* () {
