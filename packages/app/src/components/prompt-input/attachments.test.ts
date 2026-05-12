@@ -3,6 +3,25 @@ import { attachmentMime } from "./files"
 import { pasteMode } from "./paste"
 
 describe("attachmentMime", () => {
+  test("keeps browser audio and video MIME types", async () => {
+    expect(await attachmentMime(new File([Uint8Array.of(1, 2, 3)], "voice.mp3", { type: "audio/mpeg" }))).toBe(
+      "audio/mpeg",
+    )
+    expect(await attachmentMime(new File([Uint8Array.of(1, 2, 3)], "clip.mp4", { type: "video/mp4" }))).toBe(
+      "video/mp4",
+    )
+  })
+
+  test("detects audio and video MIME types from common extensions", async () => {
+    expect(await attachmentMime(new File([Uint8Array.of(1, 2, 3)], "voice.m4a", { type: "" }))).toBe("audio/mp4")
+    expect(await attachmentMime(new File([Uint8Array.of(1, 2, 3)], "clip.mov", { type: "" }))).toBe("video/quicktime")
+  })
+
+  test("does not treat TypeScript video/mp2t files as media attachments", async () => {
+    const file = new File([Uint8Array.of(0, 255, 1, 2)], "main.ts", { type: "video/mp2t" })
+    expect(await attachmentMime(file)).toBeUndefined()
+  })
+
   test("keeps PDFs when the browser reports the mime", async () => {
     const file = new File(["%PDF-1.7"], "guide.pdf", { type: "application/pdf" })
     expect(await attachmentMime(file)).toBe("application/pdf")

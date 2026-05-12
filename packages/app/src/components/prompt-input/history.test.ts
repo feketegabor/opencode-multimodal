@@ -101,6 +101,30 @@ describe("prompt-input history", () => {
     expect(entry.comments).toEqual([])
   })
 
+  test("normalizePromptHistoryEntry converts legacy image attachments to media parts", () => {
+    const entry = normalizePromptHistoryEntry([
+      { type: "text", content: "legacy", start: 0, end: 6 },
+      {
+        type: "image",
+        id: "legacy_image",
+        filename: "history.png",
+        mime: "image/png",
+        dataUrl: "data:image/png;base64,AAA",
+      },
+    ] as unknown as Prompt)
+
+    expect(entry.prompt).toEqual([
+      { type: "text", content: "legacy", start: 0, end: 6 },
+      {
+        type: "media",
+        id: "legacy_image",
+        filename: "history.png",
+        mime: "image/png",
+        dataUrl: "data:image/png;base64,AAA",
+      },
+    ])
+  })
+
   test("helpers clone prompt and count text content length", () => {
     const original: Prompt = [
       { type: "text", content: "one", start: 0, end: 3 },
@@ -112,7 +136,7 @@ describe("prompt-input history", () => {
         end: 12,
         selection: { startLine: 1, startChar: 1, endLine: 2, endChar: 1 },
       },
-      { type: "image", id: "1", filename: "img.png", mime: "image/png", dataUrl: "data:image/png;base64,abc" },
+      { type: "media", id: "1", filename: "img.png", mime: "image/png", dataUrl: "data:image/png;base64,abc" },
     ]
     const copy = clonePromptParts(original)
     expect(copy).not.toBe(original)

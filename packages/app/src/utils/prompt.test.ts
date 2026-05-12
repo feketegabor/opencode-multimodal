@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { Part } from "@opencode-ai/sdk/v2"
 import { extractPromptFromParts } from "./prompt"
+import { normalizePromptStore } from "./prompt-parts"
 
 describe("extractPromptFromParts", () => {
   test("restores multiple uploaded attachments", () => {
@@ -37,8 +38,42 @@ describe("extractPromptFromParts", () => {
     expect(result).toHaveLength(3)
     expect(result[0]).toMatchObject({ type: "text", content: "check these" })
     expect(result.slice(1)).toMatchObject([
-      { type: "image", filename: "a.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" },
-      { type: "image", filename: "b.pdf", mime: "application/pdf", dataUrl: "data:application/pdf;base64,BBB" },
+      { type: "media", filename: "a.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" },
+      { type: "media", filename: "b.pdf", mime: "application/pdf", dataUrl: "data:application/pdf;base64,BBB" },
     ])
+  })
+})
+
+describe("prompt part normalization", () => {
+  test("normalizes legacy image draft attachments to media parts", () => {
+    expect(
+      normalizePromptStore({
+        prompt: [
+          { type: "text", content: "look", start: 0, end: 4 },
+          {
+            type: "image",
+            id: "legacy_image",
+            filename: "draft.png",
+            mime: "image/png",
+            dataUrl: "data:image/png;base64,AAA",
+          },
+        ],
+        cursor: 4,
+        context: { items: [] },
+      }),
+    ).toEqual({
+      prompt: [
+        { type: "text", content: "look", start: 0, end: 4 },
+        {
+          type: "media",
+          id: "legacy_image",
+          filename: "draft.png",
+          mime: "image/png",
+          dataUrl: "data:image/png;base64,AAA",
+        },
+      ],
+      cursor: 4,
+      context: { items: [] },
+    })
   })
 })

@@ -1,5 +1,5 @@
 import type { AgentPart as MessageAgentPart, FilePart, Part, TextPart } from "@opencode-ai/sdk/v2"
-import type { AgentPart, FileAttachmentPart, ImageAttachmentPart, Prompt } from "@/context/prompt"
+import type { AgentPart, FileAttachmentPart, MediaAttachmentPart, Prompt } from "@/context/prompt"
 
 type Inline =
   | {
@@ -75,7 +75,7 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
   }
 
   const inline: Inline[] = []
-  const images: ImageAttachmentPart[] = []
+  const media: MediaAttachmentPart[] = []
 
   for (const part of parts) {
     if (part.type === "file") {
@@ -102,8 +102,8 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
       }
 
       if (filePart.url.startsWith("data:")) {
-        images.push({
-          type: "image",
+        media.push({
+          type: "media",
           id: filePart.id,
           filename: filePart.filename ?? attachmentName,
           mime: filePart.mime,
@@ -198,6 +198,6 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
     result.push({ type: "text", content: "", start: 0, end: 0 })
   }
 
-  if (images.length === 0) return result
-  return [...result, ...images]
+  if (media.length === 0) return result
+  return [...result, ...media]
 }

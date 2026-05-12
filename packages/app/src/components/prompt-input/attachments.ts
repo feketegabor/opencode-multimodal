@@ -1,7 +1,7 @@
 import { onMount } from "solid-js"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { showToast } from "@opencode-ai/ui/toast"
-import { usePrompt, type ContentPart, type ImageAttachmentPart } from "@/context/prompt"
+import { usePrompt, type ContentPart, type MediaAttachmentPart } from "@/context/prompt"
 import { useLanguage } from "@/context/language"
 import { uuid } from "@/utils/uuid"
 import { getCursorPosition } from "./editor-dom"
@@ -28,7 +28,7 @@ function dataUrl(file: File, mime: string) {
 type PromptAttachmentsInput = {
   editor: () => HTMLDivElement | undefined
   isDialogActive: () => boolean
-  setDraggingType: (type: "image" | "@mention" | null) => void
+  setDraggingType: (type: "media" | "@mention" | null) => void
   focusEditor: () => void
   addPart: (part: ContentPart) => boolean
   readClipboardImage?: () => Promise<File | null>
@@ -58,8 +58,8 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     const url = await dataUrl(file, mime)
     if (!url) return false
 
-    const attachment: ImageAttachmentPart = {
-      type: "image",
+    const attachment: MediaAttachmentPart = {
+      type: "media",
       id: uuid(),
       filename: file.name,
       mime,
@@ -86,7 +86,7 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
 
   const removeAttachment = (id: string) => {
     const current = prompt.current()
-    const next = current.filter((part) => part.type !== "image" || part.id !== id)
+    const next = current.filter((part) => part.type !== "media" || part.id !== id)
     prompt.set(next, prompt.cursor())
   }
 
@@ -147,7 +147,7 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     const hasFiles = event.dataTransfer?.types.includes("Files")
     const hasText = event.dataTransfer?.types.includes("text/plain")
     if (hasFiles) {
-      input.setDraggingType("image")
+      input.setDraggingType("media")
     } else if (hasText) {
       input.setDraggingType("@mention")
     }

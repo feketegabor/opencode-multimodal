@@ -8,9 +8,9 @@ import {
   ContentPart,
   DEFAULT_PROMPT,
   isPromptEqual,
+  MediaAttachmentPart,
   Prompt,
   usePrompt,
-  ImageAttachmentPart,
   AgentPart,
   FileAttachmentPart,
 } from "@/context/prompt"
@@ -50,7 +50,7 @@ import {
 import { createPromptSubmit, type FollowupDraft } from "./prompt-input/submit"
 import { PromptPopover, type AtOption, type SlashCommand } from "./prompt-input/slash-popover"
 import { PromptContextItems } from "./prompt-input/context-items"
-import { PromptImageAttachments } from "./prompt-input/image-attachments"
+import { PromptMediaAttachments } from "./prompt-input/media-attachments"
 import { PromptDragOverlay } from "./prompt-input/drag-overlay"
 import { promptPlaceholder } from "./prompt-input/placeholder"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
@@ -136,7 +136,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!editorRef.contains(range.startContainer)) return
 
     const cursor = getCursorPosition(editorRef)
-    const length = promptLength(prompt.current().filter((part) => part.type !== "image"))
+    const length = promptLength(prompt.current().filter((part) => part.type !== "media"))
     if (cursor >= length) {
       container.scrollTop = container.scrollHeight
       return
@@ -240,9 +240,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return paths
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const working = createMemo(() => sync.data.session_working(params.id ?? ""))
-  const imageAttachments = createMemo(() =>
-    prompt.current().filter((part): part is ImageAttachmentPart => part.type === "image"),
+  const status = createMemo(
+    () =>
+      sync.data.session_status[params.id ?? ""] ?? {
+        type: "idle",
+      },
+  )
+  const working = createMemo(() => status()?.type !== "idle")
+  const mediaAttachments = createMemo(() =>
+    prompt.current().filter((part): part is MediaAttachmentPart => part.type === "media"),
   )
 
   const [store, setStore] = createStore<{
@@ -250,7 +256,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     historyIndex: number
     savedPrompt: PromptHistoryEntry | null
     placeholder: number
-    draggingType: "image" | "@mention" | null
+    draggingType: "media" | "@mention" | null
     mode: "normal" | "shell"
     applyingHistory: boolean
   }>({
@@ -283,7 +289,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       .current()
       .map((part) => ("content" in part ? part.content : ""))
       .join("")
-    return text.trim().length === 0 && imageAttachments().length === 0 && commentCount() === 0
+    return text.trim().length === 0 && mediaAttachments().length === 0 && commentCount() === 0
   })
   const stopping = createMemo(() => working() && blank())
   const tip = () => {
@@ -549,7 +555,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     setComposing(false)
     requestAnimationFrame(() => {
       if (composing()) return
-      reconcile(prompt.current().filter((part) => part.type !== "image"))
+      reconcile(prompt.current().filter((part) => part.type !== "media"))
     })
   }
 
@@ -638,18 +644,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const handleSlashSelect = (cmd: SlashCommand | undefined) => {
     if (!cmd) return
     closePopover()
-    const images = imageAttachments()
+    const media = mediaAttachments()
 
     if (cmd.type === "custom") {
       const text = `/${cmd.trigger} `
       setEditorText(text)
-      prompt.set([{ type: "text", content: text, start: 0, end: text.length }, ...images], text.length)
+      prompt.set([{ type: "text", content: text, start: 0, end: text.length }, ...media], text.length)
       focusEditorEnd()
       return
     }
 
     clearEditor()
-    prompt.set([...DEFAULT_PROMPT, ...images], 0)
+    prompt.set([...DEFAULT_PROMPT, ...media], 0)
     command.trigger(cmd.id, "slash")
   }
 
@@ -764,7 +770,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       () => prompt.current(),
       (parts) => {
         if (composing()) return
-        reconcile(parts.filter((part) => part.type !== "image"))
+        reconcile(parts.filter((part) => part.type !== "media"))
       },
     ),
   )
@@ -853,14 +859,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const handleInput = () => {
     const rawParts = parseFromDOM()
-    const images = imageAttachments()
+    const media = mediaAttachments()
     const cursorPosition = getCursorPosition(editorRef)
     const rawText =
       rawParts.length === 1 && rawParts[0]?.type === "text"
         ? rawParts[0].content
         : rawParts.map((p) => ("content" in p ? p.content : "")).join("")
     const hasNonText = rawParts.some((part) => part.type !== "text")
-    const shouldReset = !NON_EMPTY_TEXT.test(rawText) && !hasNonText && images.length === 0
+    const shouldReset = !NON_EMPTY_TEXT.test(rawText) && !hasNonText && media.length === 0
 
     if (shouldReset) {
       closePopover()
@@ -895,12 +901,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     resetHistoryNavigation()
 
     mirror.input = true
-    prompt.set([...rawParts, ...images], cursorPosition)
+    prompt.set([...rawParts, ...media], cursorPosition)
     queueScroll()
   }
 
   const addPart = (part: ContentPart) => {
-    if (part.type === "image") return false
+    if (part.type === "media") return false
 
     const selection = window.getSelection()
     if (!selection) return false
@@ -1064,7 +1070,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const { abort, handleSubmit } = createPromptSubmit({
     info,
-    imageAttachments,
+    mediaAttachments,
     commentCount,
     autoAccept: () => accepting(),
     mode: () => store.mode,
@@ -1239,7 +1245,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           .map((part) => ("content" in part ? part.content : ""))
           .join("")
           .trim().length === 0 &&
-        imageAttachments().length === 0 &&
+        mediaAttachments().length === 0 &&
         commentCount() === 0
       ) {
         return
@@ -1310,8 +1316,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           }}
           t={(key) => language.t(key as Parameters<typeof language.t>[0])}
         />
-        <PromptImageAttachments
-          attachments={imageAttachments()}
+        <PromptMediaAttachments
+          attachments={mediaAttachments()}
           onOpen={(attachment) =>
             dialog.show(() => <ImagePreview src={attachment.dataUrl} alt={attachment.filename} />)
           }
