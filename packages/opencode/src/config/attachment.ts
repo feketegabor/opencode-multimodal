@@ -19,7 +19,29 @@ export const Image = Schema.Struct({
 }).annotate({ identifier: "ImageAttachmentConfig" })
 export type Image = Schema.Schema.Type<typeof Image>
 
+export const Audio = Schema.Struct({
+  max_base64_bytes: Schema.optional(PositiveInt).annotate({
+    description: "Maximum base64 payload bytes for an audio attachment (default: 20971520)",
+  }),
+  max_duration_seconds: Schema.optional(PositiveInt).annotate({
+    description: "Maximum audio duration in seconds when duration can be measured cheaply (default: 3600)",
+  }),
+}).annotate({ identifier: "AudioAttachmentConfig" })
+export type Audio = Schema.Schema.Type<typeof Audio>
+
+export const Video = Schema.Struct({
+  max_base64_bytes: Schema.optional(PositiveInt).annotate({
+    description: "Maximum base64 payload bytes for a video attachment (default: 20971520)",
+  }),
+  max_duration_seconds: Schema.optional(PositiveInt).annotate({
+    description: "Maximum video duration in seconds when duration can be measured cheaply (default: 60)",
+  }),
+}).annotate({ identifier: "VideoAttachmentConfig" })
+export type Video = Schema.Schema.Type<typeof Video>
+
 export const Info = Schema.Struct({
   image: Schema.optional(Image).annotate({ description: "Image attachment configuration" }),
+  audio: Schema.optional(Audio).annotate({ description: "Audio attachment configuration" }),
+  video: Schema.optional(Video).annotate({ description: "Video attachment configuration" }),
 }).annotate({ identifier: "AttachmentConfig" })
 export type Info = Schema.Schema.Type<typeof Info>
