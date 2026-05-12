@@ -1,6 +1,7 @@
 const startsWith = (bytes: Uint8Array, prefix: number[]) => prefix.every((value, index) => bytes[index] === value)
 const isMpegAudioFrame = (bytes: Uint8Array) =>
   bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0 && (bytes[1] & 0x18) !== 0x08 && (bytes[1] & 0x06) !== 0
+const AMBIGUOUS_MEDIA_FALLBACKS = new Set(["video/mp2t"])
 
 export function isPdfAttachment(mime: string) {
   return mime === "application/pdf"
@@ -16,6 +17,10 @@ export function isVideoAttachment(mime: string) {
 
 export function isMedia(mime: string) {
   return mime.startsWith("image/") || isPdfAttachment(mime) || isAudioAttachment(mime) || isVideoAttachment(mime)
+}
+
+export function isAmbiguousMediaFallback(mime: string) {
+  return AMBIGUOUS_MEDIA_FALLBACKS.has(mime)
 }
 
 export function isImageAttachment(mime: string) {
@@ -44,4 +49,10 @@ export function sniffAttachmentMime(bytes: Uint8Array, fallback: string) {
   }
 
   return fallback
+}
+
+export function sniffAttachmentMimeSafe(bytes: Uint8Array, fallback: string) {
+  const mime = sniffAttachmentMime(bytes, fallback)
+  if (mime === fallback && isAmbiguousMediaFallback(fallback)) return "text/plain"
+  return mime
 }
