@@ -316,6 +316,122 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
+  test("converts audio and video parts to AI SDK file content", async () => {
+    const messageID = "m-user"
+    const mediaModel: Provider.Model = {
+      ...model,
+      capabilities: {
+        ...model.capabilities,
+        input: {
+          ...model.capabilities.input,
+          audio: true,
+          video: true,
+        },
+      },
+    }
+
+    expect(
+      await MessageV2.toModelMessages(
+        [
+          {
+            info: userInfo(messageID),
+            parts: [
+              {
+                ...basePart(messageID, "audio"),
+                type: "file",
+                mime: "audio/mpeg",
+                filename: "clip.mp3",
+                url: "data:audio/mpeg;base64,YXVkaW8=",
+              },
+              {
+                ...basePart(messageID, "video"),
+                type: "file",
+                mime: "video/mp4",
+                filename: "clip.mp4",
+                url: "data:video/mp4;base64,dmlkZW8=",
+              },
+            ] as MessageV2.Part[],
+          },
+        ],
+        mediaModel,
+      ),
+    ).toStrictEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "file",
+            mediaType: "audio/mpeg",
+            filename: "clip.mp3",
+            data: "data:audio/mpeg;base64,YXVkaW8=",
+          },
+          {
+            type: "file",
+            mediaType: "video/mp4",
+            filename: "clip.mp4",
+            data: "data:video/mp4;base64,dmlkZW8=",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("stripMedia removes image, PDF, audio, and video parts while keeping text", async () => {
+    const messageID = "m-user"
+
+    expect(
+      await MessageV2.toModelMessages(
+        [
+          {
+            info: userInfo(messageID),
+            parts: [
+              {
+                ...basePart(messageID, "text"),
+                type: "text",
+                text: "keep this",
+              },
+              {
+                ...basePart(messageID, "image"),
+                type: "file",
+                mime: "image/png",
+                filename: "image.png",
+                url: "data:image/png;base64,aW1hZ2U=",
+              },
+              {
+                ...basePart(messageID, "pdf"),
+                type: "file",
+                mime: "application/pdf",
+                filename: "doc.pdf",
+                url: "data:application/pdf;base64,cGRm",
+              },
+              {
+                ...basePart(messageID, "audio"),
+                type: "file",
+                mime: "audio/mpeg",
+                filename: "clip.mp3",
+                url: "data:audio/mpeg;base64,YXVkaW8=",
+              },
+              {
+                ...basePart(messageID, "video"),
+                type: "file",
+                mime: "video/mp4",
+                filename: "clip.mp4",
+                url: "data:video/mp4;base64,dmlkZW8=",
+              },
+            ] as MessageV2.Part[],
+          },
+        ],
+        model,
+        { stripMedia: true },
+      ),
+    ).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "keep this" }],
+      },
+    ])
+  })
+
   test("converts assistant tool completion into tool-call + tool-result messages with attachments", async () => {
     const userID = "m-user"
     const assistantID = "m-assistant"
@@ -402,6 +518,457 @@ describe("session.message-v2.toModelMessage", () => {
               ],
             },
             providerOptions: { openai: { tool: "meta" } },
+          },
+        ],
+      },
+    ])
+  })
+
+  test("extracts data audio and video tool-result media for openai-compatible providers", async () => {
+    const userID = "m-user-media-tool"
+    const assistantID = "m-assistant-media-tool"
+    const mediaModel: Provider.Model = {
+      ...model,
+      id: ModelID.make("mimo-v2.5"),
+      providerID: ProviderID.make("opencode-go"),
+      api: {
+        id: "mimo-v2.5",
+        url: "https://opencode.ai/zen/go/v1",
+        npm: "@ai-sdk/openai-compatible",
+      },
+      capabilities: {
+        ...model.capabilities,
+        input: {
+          ...model.capabilities.input,
+          audio: true,
+          video: true,
+        },
+      },
+    }
+
+    expect(
+      await MessageV2.toModelMessages(
+        [
+          {
+            info: userInfo(userID),
+            parts: [
+              {
+                ...basePart(userID, "u-media-tool"),
+                type: "text",
+                text: "run tool",
+              },
+            ] as MessageV2.Part[],
+          },
+          {
+            info: assistantInfo(assistantID, userID, undefined, {
+              providerID: mediaModel.providerID,
+              modelID: mediaModel.id,
+            }),
+            parts: [
+              {
+                ...basePart(assistantID, "a-media-tool"),
+                type: "tool",
+                callID: "call-media-tool",
+                tool: "read",
+                state: {
+                  status: "completed",
+                  input: { filePath: "/tmp/media" },
+                  output: "Media read successfully",
+                  title: "Read",
+                  metadata: {},
+                  time: { start: 0, end: 1 },
+                  attachments: [
+                    {
+                      ...basePart(assistantID, "file-audio-tool"),
+                      type: "file",
+                      mime: "audio/mpeg",
+                      filename: "clip.mp3",
+                      url: "data:audio/mpeg;base64,YXVkaW8=",
+                    },
+                    {
+                      ...basePart(assistantID, "file-video-tool"),
+                      type: "file",
+                      mime: "video/mp4",
+                      filename: "clip.mp4",
+                      url: "data:video/mp4;base64,dmlkZW8=",
+                    },
+                  ],
+                },
+              },
+            ] as MessageV2.Part[],
+          },
+        ],
+        mediaModel,
+      ),
+    ).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "run tool" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-media-tool",
+            toolName: "read",
+            input: { filePath: "/tmp/media" },
+            providerExecuted: undefined,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-media-tool",
+            toolName: "read",
+            output: {
+              type: "text",
+              value: "Media read successfully",
+            },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Attached media from tool result:" },
+          {
+            type: "file",
+            mediaType: "audio/mpeg",
+            filename: "clip.mp3",
+            data: "data:audio/mpeg;base64,YXVkaW8=",
+          },
+          {
+            type: "file",
+            mediaType: "video/mp4",
+            filename: "clip.mp4",
+            data: "data:video/mp4;base64,dmlkZW8=",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("extracts HTTP audio and video tool-result media instead of dropping them", async () => {
+    const userID = "m-user-http-media-tool"
+    const assistantID = "m-assistant-http-media-tool"
+    const mediaModel: Provider.Model = {
+      ...model,
+      id: ModelID.make("mimo-v2.5"),
+      providerID: ProviderID.make("opencode-go"),
+      api: {
+        id: "mimo-v2.5",
+        url: "https://opencode.ai/zen/go/v1",
+        npm: "@ai-sdk/openai-compatible",
+      },
+      capabilities: {
+        ...model.capabilities,
+        input: {
+          ...model.capabilities.input,
+          audio: true,
+          video: true,
+        },
+      },
+    }
+
+    expect(
+      await MessageV2.toModelMessages(
+        [
+          {
+            info: userInfo(userID),
+            parts: [
+              {
+                ...basePart(userID, "u-http-media-tool"),
+                type: "text",
+                text: "run tool",
+              },
+            ] as MessageV2.Part[],
+          },
+          {
+            info: assistantInfo(assistantID, userID, undefined, {
+              providerID: mediaModel.providerID,
+              modelID: mediaModel.id,
+            }),
+            parts: [
+              {
+                ...basePart(assistantID, "a-http-media-tool"),
+                type: "tool",
+                callID: "call-http-media-tool",
+                tool: "read",
+                state: {
+                  status: "completed",
+                  input: { filePath: "/tmp/media" },
+                  output: "Media read successfully",
+                  title: "Read",
+                  metadata: {},
+                  time: { start: 0, end: 1 },
+                  attachments: [
+                    {
+                      ...basePart(assistantID, "file-http-audio-tool"),
+                      type: "file",
+                      mime: "audio/mpeg",
+                      filename: "clip.mp3",
+                      url: "https://example.com/clip.mp3",
+                    },
+                    {
+                      ...basePart(assistantID, "file-http-video-tool"),
+                      type: "file",
+                      mime: "video/mp4",
+                      filename: "clip.mp4",
+                      url: "https://example.com/clip.mp4",
+                    },
+                  ],
+                },
+              },
+            ] as MessageV2.Part[],
+          },
+        ],
+        mediaModel,
+      ),
+    ).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "run tool" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-http-media-tool",
+            toolName: "read",
+            input: { filePath: "/tmp/media" },
+            providerExecuted: undefined,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-http-media-tool",
+            toolName: "read",
+            output: {
+              type: "text",
+              value: "Media read successfully",
+            },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Attached media from tool result:" },
+          {
+            type: "file",
+            mediaType: "audio/mpeg",
+            filename: "clip.mp3",
+            data: "https://example.com/clip.mp3",
+          },
+          {
+            type: "file",
+            mediaType: "video/mp4",
+            filename: "clip.mp4",
+            data: "https://example.com/clip.mp4",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("extracts HTTP image and PDF tool-result media instead of dropping them", async () => {
+    const userID = "m-user-http-document-tool"
+    const assistantID = "m-assistant-http-document-tool"
+
+    expect(
+      await MessageV2.toModelMessages([
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u-http-document-tool"),
+              type: "text",
+              text: "run tool",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a-http-document-tool"),
+              type: "tool",
+              callID: "call-http-document-tool",
+              tool: "read",
+              state: {
+                status: "completed",
+                input: { filePath: "/tmp/document" },
+                output: "Document read successfully",
+                title: "Read",
+                metadata: {},
+                time: { start: 0, end: 1 },
+                attachments: [
+                  {
+                    ...basePart(assistantID, "file-http-image-tool"),
+                    type: "file",
+                    mime: "image/png",
+                    filename: "image.png",
+                    url: "https://example.com/image.png",
+                  },
+                  {
+                    ...basePart(assistantID, "file-http-pdf-tool"),
+                    type: "file",
+                    mime: "application/pdf",
+                    filename: "document.pdf",
+                    url: "https://example.com/document.pdf",
+                  },
+                ],
+              },
+            },
+          ] as MessageV2.Part[],
+        },
+      ], model),
+    ).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "run tool" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-http-document-tool",
+            toolName: "read",
+            input: { filePath: "/tmp/document" },
+            providerExecuted: undefined,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-http-document-tool",
+            toolName: "read",
+            output: {
+              type: "text",
+              value: "Document read successfully",
+            },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Attached media from tool result:" },
+          {
+            type: "file",
+            mediaType: "image/png",
+            filename: "image.png",
+            data: "https://example.com/image.png",
+          },
+          {
+            type: "file",
+            mediaType: "application/pdf",
+            filename: "document.pdf",
+            data: "https://example.com/document.pdf",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("extracts audio tool-result media when provider strategy rejects it", async () => {
+    const userID = "m-user-audio-reject"
+    const assistantID = "m-assistant-audio-reject"
+
+    expect(
+      await MessageV2.toModelMessages([
+        {
+          info: userInfo(userID),
+          parts: [
+            {
+              ...basePart(userID, "u-audio-reject"),
+              type: "text",
+              text: "run tool",
+            },
+          ] as MessageV2.Part[],
+        },
+        {
+          info: assistantInfo(assistantID, userID),
+          parts: [
+            {
+              ...basePart(assistantID, "a-audio-reject"),
+              type: "tool",
+              callID: "call-audio-reject",
+              tool: "read",
+              state: {
+                status: "completed",
+                input: { filePath: "/tmp/audio.mp3" },
+                output: "Audio read successfully",
+                title: "Read",
+                metadata: {},
+                time: { start: 0, end: 1 },
+                attachments: [
+                  {
+                    ...basePart(assistantID, "file-audio-reject"),
+                    type: "file",
+                    mime: "audio/mpeg",
+                    filename: "clip.mp3",
+                    url: "data:audio/mpeg;base64,YXVkaW8=",
+                  },
+                ],
+              },
+            },
+          ] as MessageV2.Part[],
+        },
+      ], model),
+    ).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "run tool" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-audio-reject",
+            toolName: "read",
+            input: { filePath: "/tmp/audio.mp3" },
+            providerExecuted: undefined,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-audio-reject",
+            toolName: "read",
+            output: {
+              type: "text",
+              value: "Audio read successfully",
+            },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Attached media from tool result:" },
+          {
+            type: "file",
+            mediaType: "audio/mpeg",
+            filename: "clip.mp3",
+            data: "data:audio/mpeg;base64,YXVkaW8=",
           },
         ],
       },
