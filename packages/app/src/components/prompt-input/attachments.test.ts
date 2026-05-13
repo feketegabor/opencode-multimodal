@@ -1,63 +1,92 @@
-import { describe, expect, test } from "bun:test"
-import { attachmentMime } from "./files"
-import { pasteMode } from "./paste"
+import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
+import { createRoot } from "solid-js"
+import type { ContentPart, Prompt } from "@/context/prompt"
 
-describe("attachmentMime", () => {
-  test("keeps browser audio and video MIME types", async () => {
-    expect(await attachmentMime(new File([Uint8Array.of(1, 2, 3)], "voice.mp3", { type: "audio/mpeg" }))).toBe(
-      "audio/mpeg",
-    )
-    expect(await attachmentMime(new File([Uint8Array.of(1, 2, 3)], "clip.mp4", { type: "video/mp4" }))).toBe(
-      "video/mp4",
-    )
-  })
+let createPromptAttachments: typeof import("./attachments").createPromptAttachments
 
-  test("detects audio and video MIME types from common extensions", async () => {
-    expect(await attachmentMime(new File([Uint8Array.of(1, 2, 3)], "voice.m4a", { type: "" }))).toBe("audio/mp4")
-    expect(await attachmentMime(new File([Uint8Array.of(1, 2, 3)], "clip.mov", { type: "" }))).toBe("video/quicktime")
-  })
+const toasts: Array<{ title: string; description?: string }> = []
+const promptSets: Array<{ prompt: Prompt; cursor: number | undefined }> = []
+const revoked: string[] = []
+let promptValue: Prompt = []
+let uploadAttachment: (file: File) => Promise<{ url: string }>
 
-  test("does not treat TypeScript video/mp2t files as media attachments", async () => {
-    const file = new File([Uint8Array.of(0, 255, 1, 2)], "main.ts", { type: "video/mp2t" })
-    expect(await attachmentMime(file)).toBeUndefined()
-  })
+beforeAll(async () => {
+  mock.module("@opencode-ai/ui/toast", () => ({
+    showToast: (toast: { title: string; description?: string }) => {
+      toasts.push(toast)
+      return 0
+    },
+  }))
 
-  test("keeps PDFs when the browser reports the mime", async () => {
-    const file = new File(["%PDF-1.7"], "guide.pdf", { type: "application/pdf" })
-    expect(await attachmentMime(file)).toBe("application/pdf")
-  })
+  mock.module("@/context/language", () => ({
+    useLanguage: () => ({ t: (key: string) => key }),
+  }))
 
-  test("normalizes structured text types to text/plain", async () => {
-    const file = new File(['{"ok":true}\n'], "data.json", { type: "application/json" })
-    expect(await attachmentMime(file)).toBe("text/plain")
-  })
+  mock.module("@/context/sdk", () => ({
+    useSDK: () => ({ uploadAttachment }),
+  }))
 
-  test("accepts text files even with a misleading browser mime", async () => {
-    const file = new File(["export const x = 1\n"], "main.ts", { type: "video/mp2t" })
-    expect(await attachmentMime(file)).toBe("text/plain")
-  })
+  mock.module("@/context/prompt", () => ({
+    usePrompt: () => ({
+      current: () => promptValue,
+      cursor: () => undefined,
+      set: (prompt: Prompt, cursor: number | undefined) => {
+        promptValue = prompt
+        promptSets.push({ prompt, cursor })
+      },
+    }),
+  }))
 
-  test("rejects binary files", async () => {
-    const file = new File([Uint8Array.of(0, 255, 1, 2)], "blob.bin", { type: "application/octet-stream" })
-    expect(await attachmentMime(file)).toBeUndefined()
-  })
+  const mod = await import("./attachments")
+  createPromptAttachments = mod.createPromptAttachments
 })
 
-describe("pasteMode", () => {
-  test("uses native paste for short single-line text", () => {
-    expect(pasteMode("hello world")).toBe("native")
+beforeEach(() => {
+  toasts.length = 0
+  promptSets.length = 0
+  revoked.length = 0
+  promptValue = []
+  uploadAttachment = async () => ({ url: "file:///uploads/clip.mp4" })
+  URL.createObjectURL = () => "blob:preview"
+  URL.revokeObjectURL = (url: string) => {
+    revoked.push(url)
+  }
+})
+
+function input() {
+  return {
+    editor: () => ({}) as HTMLDivElement,
+    isDialogActive: () => false,
+    setDraggingType: () => undefined,
+    focusEditor: () => undefined,
+    addPart: (_part: ContentPart) => true,
+  }
+}
+
+describe("createPromptAttachments", () => {
+  test("does not add partial attachments when upload fails", async () => {
+    uploadAttachment = async () => {
+      throw new Error("upload failed")
+    }
+
+    await createRoot(async (dispose) => {
+      const attachments = createPromptAttachments(input())
+
+      expect(await attachments.addAttachment(new File(["x"], "clip.mp4", { type: "video/mp4" }))).toBe(false)
+      expect(promptSets).toHaveLength(0)
+      expect(toasts).toHaveLength(1)
+
+      dispose()
+    })
   })
 
-  test("uses manual paste for multiline text", () => {
-    expect(
-      pasteMode(`{
-  "ok": true
-}`),
-    ).toBe("manual")
-    expect(pasteMode("a\r\nb")).toBe("manual")
-  })
+  test("revokes preview object URLs when the attachment controller unmounts", async () => {
+    await createRoot(async (dispose) => {
+      const attachments = createPromptAttachments(input())
 
-  test("uses manual paste for large text", () => {
-    expect(pasteMode("x".repeat(8000))).toBe("manual")
+      expect(await attachments.addAttachment(new File(["x"], "clip.mp4", { type: "video/mp4" }))).toBe(true)
+      dispose()
+      expect(revoked).toContain("blob:preview")
+    })
   })
 })

@@ -6,12 +6,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\feket\\opencode-multimodal\\.worktrees\\multimodal-input\\.codex\\hooks\\session_start_superpowers.ps1\"",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \".codex\\hooks\\session_start_superpowers.ps1\"",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\feket\\opencode-multimodal\\.worktrees\\multimodal-input\\.codex\\hooks\\session_start_opensrc.ps1\"",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \".codex\\hooks\\session_start_opensrc.ps1\"",
             "timeout": 10
           },
           {
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\feket\\opencode-multimodal\\.worktrees\\multimodal-input\\.codex\\hooks\\pre_tool_use_policy.ps1\"",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \".codex\\hooks\\pre_tool_use_policy.ps1\"",
             "timeout": 10
           }
         ]
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\feket\\opencode-multimodal\\.worktrees\\multimodal-input\\.codex\\hooks\\pre_tool_use_chrome.ps1\"",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \".codex\\hooks\\pre_tool_use_chrome.ps1\"",
             "timeout": 10
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\feket\\opencode-multimodal\\.worktrees\\multimodal-input\\.codex\\hooks\\post_tool_use_opensrc_serena.ps1\"",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \".codex\\hooks\\post_tool_use_opensrc_serena.ps1\"",
             "timeout": 60
           }
         ]

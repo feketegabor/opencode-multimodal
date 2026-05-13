@@ -1,4 +1,4 @@
-import { onMount } from "solid-js"
+import { createEffect, onCleanup, onMount } from "solid-js"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { showToast } from "@opencode-ai/ui/toast"
 import { usePrompt, type ContentPart, type MediaAttachmentPart } from "@/context/prompt"
@@ -22,6 +22,7 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
   const prompt = usePrompt()
   const language = useLanguage()
   const sdk = useSDK()
+  const previews = new Set<string>()
 
   const warn = () => {
     showToast({
@@ -40,14 +41,22 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     const editor = input.editor()
     if (!editor) return false
 
-    const uploaded = await sdk.uploadAttachment(file)
+    const uploaded = await sdk.uploadAttachment(file).catch((err) => {
+      showToast({
+        title: language.t("common.requestFailed"),
+        description: err instanceof Error ? err.message : undefined,
+      })
+    })
+    if (!uploaded) return false
 
+    const previewUrl = URL.createObjectURL(file)
+    previews.add(previewUrl)
     const attachment: MediaAttachmentPart = {
       type: "media",
       id: uuid(),
       filename: file.name,
       mime,
-      previewUrl: URL.createObjectURL(file),
+      previewUrl,
       url: uploaded.url,
       source: uploaded.source?.type === "file" ? uploaded.source : undefined,
     }
@@ -73,7 +82,10 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
   const removeAttachment = (id: string) => {
     const current = prompt.current()
     current.forEach((part) => {
-      if (part.type === "media" && part.id === id && part.previewUrl) URL.revokeObjectURL(part.previewUrl)
+      if (part.type === "media" && part.id === id && part.previewUrl) {
+        URL.revokeObjectURL(part.previewUrl)
+        previews.delete(part.previewUrl)
+      }
     })
     const next = current.filter((part) => part.type !== "media" || part.id !== id)
     prompt.set(next, prompt.cursor())
@@ -174,6 +186,25 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     makeEventListener(document, "dragover", handleGlobalDragOver)
     makeEventListener(document, "dragleave", handleGlobalDragLeave)
     makeEventListener(document, "drop", handleGlobalDrop)
+  })
+
+  createEffect(() => {
+    const active = new Set(
+      prompt
+        .current()
+        .flatMap((part) => (part.type === "media" && part.previewUrl ? [part.previewUrl] : [])),
+    )
+    previews.forEach((url) => {
+      if (!active.has(url)) {
+        URL.revokeObjectURL(url)
+        previews.delete(url)
+      }
+    })
+  })
+
+  onCleanup(() => {
+    previews.forEach((url) => URL.revokeObjectURL(url))
+    previews.clear()
   })
 
   return {

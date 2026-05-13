@@ -49,6 +49,10 @@ function textPartValue(parts: Part[]) {
   }, undefined)
 }
 
+function isMediaMime(mime: string) {
+  return mime.startsWith("image/") || mime.startsWith("audio/") || mime.startsWith("video/") || mime === "application/pdf"
+}
+
 /**
  * Extract prompt content from message parts for restoring into the prompt input.
  * This is used by undo to restore the original user prompt.
@@ -80,6 +84,19 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
   for (const part of parts) {
     if (part.type === "file") {
       const filePart = part as FilePart
+      if (isMediaMime(filePart.mime)) {
+        media.push({
+          type: "media",
+          id: filePart.id,
+          filename: filePart.filename ?? attachmentName,
+          mime: filePart.mime,
+          dataUrl: filePart.url.startsWith("data:") ? filePart.url : undefined,
+          url: filePart.url.startsWith("data:") ? undefined : filePart.url,
+          source: filePart.source?.type === "file" ? filePart.source : undefined,
+        })
+        continue
+      }
+
       const sourceText = filePart.source?.text
       if (sourceText) {
         const value = sourceText.value
@@ -101,15 +118,7 @@ export function extractPromptFromParts(parts: Part[], opts?: { directory?: strin
         continue
       }
 
-      if (filePart.url.startsWith("data:")) {
-        media.push({
-          type: "media",
-          id: filePart.id,
-          filename: filePart.filename ?? attachmentName,
-          mime: filePart.mime,
-          dataUrl: filePart.url,
-        })
-      }
+      if (filePart.url.startsWith("data:")) continue
     }
 
     if (part.type === "agent") {

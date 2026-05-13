@@ -9,7 +9,6 @@ languages:
 - bash
 - yaml
 - toml
-- nix
 - json
 - html
 - scss

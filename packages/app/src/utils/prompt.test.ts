@@ -42,6 +42,48 @@ describe("extractPromptFromParts", () => {
       { type: "media", filename: "b.pdf", mime: "application/pdf", dataUrl: "data:application/pdf;base64,BBB" },
     ])
   })
+
+  test("restores uploaded media with source metadata as media attachments", () => {
+    const parts = [
+      {
+        id: "text_1",
+        type: "text",
+        text: "describe",
+        sessionID: "ses_1",
+        messageID: "msg_1",
+      },
+      {
+        id: "file_1",
+        type: "file",
+        mime: "video/mp4",
+        url: "file:///C:/Users/feket/.local/share/opencode/uploads/clip.mp4",
+        filename: "clip.mp4",
+        source: {
+          type: "file",
+          path: "C:/Users/feket/.local/share/opencode/uploads/clip.mp4",
+          text: { value: "clip.mp4", start: 0, end: 8 },
+        },
+        sessionID: "ses_1",
+        messageID: "msg_1",
+      },
+    ] satisfies Part[]
+
+    expect(extractPromptFromParts(parts)).toMatchObject([
+      { type: "text", content: "describe" },
+      {
+        type: "media",
+        id: "file_1",
+        filename: "clip.mp4",
+        mime: "video/mp4",
+        url: "file:///C:/Users/feket/.local/share/opencode/uploads/clip.mp4",
+        source: {
+          type: "file",
+          path: "C:/Users/feket/.local/share/opencode/uploads/clip.mp4",
+          text: { value: "clip.mp4", start: 0, end: 8 },
+        },
+      },
+    ])
+  })
 })
 
 describe("prompt part normalization", () => {

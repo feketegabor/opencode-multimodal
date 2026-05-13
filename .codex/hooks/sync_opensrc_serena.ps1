@@ -55,7 +55,6 @@ function Get-Languages($root) {
       '\.(m|mlx|mlapp)$' { $langs["matlab"] = $true; continue }
       '\.(md|mdx|markdown)$' { $langs["markdown"] = $true; continue }
       '\.mrc$' { $langs["msl"] = $true; continue }
-      '\.nix$' { $langs["nix"] = $true; continue }
       '\.(ml|mli|re|rei)$' { $langs["ocaml"] = $true; continue }
       '\.(pas|pp|lpr|dpr|dpk|inc)$' { $langs["pascal"] = $true; continue }
       '\.php$' { $langs["php"] = $true; continue }

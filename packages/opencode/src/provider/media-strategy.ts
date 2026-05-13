@@ -40,7 +40,7 @@ export function resolve(model: Provider.Model): Strategy {
   )
   const schemes = new Set<Scheme>(
     model.api.npm === "@ai-sdk/google"
-      ? ["data", "file", "https", "gemini-file", "gs", "youtube"]
+      ? ["data", "file", "https", "youtube"]
       : ["data", "file", "http", "https"],
   )
   const videoAudio = model.capabilities.input.video

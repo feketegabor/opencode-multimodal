@@ -118,4 +118,24 @@ describe("file HttpApi", () => {
     expect(await Bun.file(fileURLToPath(part.url)).bytes()).toEqual(new Uint8Array([1, 2, 3]))
     expect(part.source?.path).toBe(fileURLToPath(part.url))
   })
+
+  test("rejects oversized browser media uploads before persistence", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const response = await upload(tmp.path, new Uint8Array([1]), {
+      "content-length": String(101 * 1024 * 1024),
+    })
+
+    expect(response.status).toBe(413)
+  })
+
+  test("rejects non-attachment MIME types for browser uploads", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const response = await upload(tmp.path, new Uint8Array([1]), {
+      "content-type": "application/octet-stream",
+    })
+
+    expect(response.status).toBe(415)
+  })
 })

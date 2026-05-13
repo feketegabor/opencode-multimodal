@@ -119,7 +119,7 @@ describe("ProviderMediaStrategy.resolve", () => {
     ).toStrictEqual({ type: "url" })
   })
 
-  test("allows Google-only schemes and rejects them for non-Google models", () => {
+  test("rejects Google URL schemes that AI SDK cannot serialize directly", () => {
     const google = ProviderMediaStrategy.resolve(
       model({
         providerID: ProviderID.make("google"),
@@ -136,8 +136,8 @@ describe("ProviderMediaStrategy.resolve", () => {
     )
     const openaiCompatible = ProviderMediaStrategy.resolve(model())
 
-    expect(google.transport({ mime: "video/mp4", url: "gemini-file://files/video" })).toStrictEqual({ type: "url" })
-    expect(google.transport({ mime: "video/mp4", url: "gs://bucket/video.mp4" })).toStrictEqual({ type: "url" })
+    expect(google.transport({ mime: "video/mp4", url: "gemini-file://files/video" }).type).toBe("reject")
+    expect(google.transport({ mime: "video/mp4", url: "gs://bucket/video.mp4" }).type).toBe("reject")
     expect(google.transport({ mime: "video/mp4", url: "https://youtu.be/abc123" })).toStrictEqual({ type: "url" })
 
     expect(openaiCompatible.transport({ mime: "video/mp4", url: "gemini-file://files/video" }).type).toBe("reject")

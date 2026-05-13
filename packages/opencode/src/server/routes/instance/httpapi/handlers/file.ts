@@ -4,6 +4,7 @@ import { Ripgrep } from "@/file/ripgrep"
 import { Global } from "@opencode-ai/core/global"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { randomUUID } from "crypto"
+import { stat } from "fs/promises"
 import { Effect } from "effect"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -12,6 +13,9 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { FilePaths } from "../groups/file"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
+
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
 
 function headerValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) return value[0]
@@ -36,6 +40,10 @@ function mime(request: HttpServerRequest.HttpServerRequest) {
     headerValue(request.headers["content-type"])?.split(";")[0]?.trim() ||
     "application/octet-stream"
   )
+}
+
+function supportedUploadMime(value: string) {
+  return value.startsWith("image/") || value.startsWith("audio/") || value.startsWith("video/") || value === "application/pdf"
 }
 
 export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handlers) =>
@@ -96,11 +104,48 @@ export const fileUploadRoute = HttpRouter.use((router) =>
         const request = yield* HttpServerRequest.HttpServerRequest
         yield* WorkspaceRouteContext
         const name = filename(request)
-        const filepath = path.join(Global.Path.data, "uploads", `${randomUUID()}-${name}`)
-        yield* fs.writeWithDirs(filepath, new Uint8Array(yield* Effect.orDie(request.arrayBuffer)))
+        const contentType = mime(request)
+        if (!supportedUploadMime(contentType)) {
+          return HttpServerResponse.jsonUnsafe({ error: "Unsupported upload MIME type" }, { status: 415 })
+        }
+        const declaredSize = Number(headerValue(request.headers["content-length"]) ?? "0")
+        if (Number.isFinite(declaredSize) && declaredSize > MAX_UPLOAD_BYTES) {
+          return HttpServerResponse.jsonUnsafe({ error: "Upload exceeds maximum size" }, { status: 413 })
+        }
+
+        const uploadDir = path.join(Global.Path.data, "uploads")
+        yield* fs
+          .readDirectoryEntries(uploadDir)
+          .pipe(
+            Effect.flatMap((entries) =>
+              Effect.all(
+                entries
+                  .filter((entry) => entry.type === "file")
+                  .map((entry) =>
+                    Effect.tryPromise(() => stat(path.join(uploadDir, entry.name))).pipe(
+                      Effect.flatMap((info) =>
+                        Date.now() - info.mtimeMs > UPLOAD_TTL_MS
+                          ? fs.remove(path.join(uploadDir, entry.name), { force: true })
+                          : Effect.void,
+                      ),
+                      Effect.ignore,
+                    ),
+                  ),
+                { concurrency: 4 },
+              ),
+            ),
+            Effect.ignore,
+          )
+
+        const bytes = new Uint8Array(yield* Effect.orDie(request.arrayBuffer))
+        if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+          return HttpServerResponse.jsonUnsafe({ error: "Upload exceeds maximum size" }, { status: 413 })
+        }
+        const filepath = path.join(uploadDir, `${randomUUID()}-${name}`)
+        yield* fs.writeWithDirs(filepath, bytes)
         return HttpServerResponse.jsonUnsafe({
           type: "file",
-          mime: mime(request),
+          mime: contentType,
           filename: name,
           url: pathToFileURL(filepath).href,
           source: {
