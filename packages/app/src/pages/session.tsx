@@ -1462,7 +1462,7 @@ export default function Page() {
 
   const line = (id: string) => {
     const text = draft(id)
-      .map((part) => (part.type === "image" ? `[image:${part.filename}]` : part.content))
+      .map((part) => (part.type === "media" ? `[media:${part.filename}]` : part.content))
       .join("")
       .replace(/\s+/g, " ")
       .trim()
@@ -1555,7 +1555,7 @@ export default function Page() {
   const followupText = (item: FollowupDraft) => {
     const text = item.prompt
       .map((part) => {
-        if (part.type === "image") return `[image:${part.filename}]`
+        if (part.type === "media") return `[media:${part.filename}]`
         if (part.type === "file") return `[file:${part.path}]`
         if (part.type === "agent") return `@${part.name}`
         return part.content
