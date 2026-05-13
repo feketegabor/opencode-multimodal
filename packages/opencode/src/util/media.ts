@@ -40,7 +40,7 @@ export function sniffAttachmentMime(bytes: Uint8Array, fallback: string) {
   }
   if (startsWith(bytes, [0x4f, 0x67, 0x67, 0x53])) return "audio/ogg"
   if (startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3])) return "video/webm"
-  if (startsWith(bytes.subarray(4), [0x66, 0x74, 0x79, 0x70])) return "video/mp4"
+  if (startsWith(bytes.subarray(4), [0x66, 0x74, 0x79, 0x70])) return fallback.startsWith("audio/") ? "audio/mp4" : "video/mp4"
   if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes.subarray(8), [0x41, 0x56, 0x49, 0x20])) {
     return "video/x-msvideo"
   }

@@ -33,6 +33,12 @@ describe("util.media", () => {
     )
     expect(sniffAttachmentMime(Uint8Array.from([0x4f, 0x67, 0x67, 0x53]), "")).toBe("audio/ogg")
     expect(sniffAttachmentMime(Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70]), "")).toBe("video/mp4")
+    expect(sniffAttachmentMime(Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70]), "audio/mp4")).toBe(
+      "audio/mp4",
+    )
+    expect(sniffAttachmentMime(Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70]), "audio/mpeg")).toBe(
+      "audio/mp4",
+    )
     expect(sniffAttachmentMime(Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3]), "")).toBe("video/webm")
     expect(sniffAttachmentMime(Uint8Array.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x41, 0x56, 0x49, 0x20]), "")).toBe(
       "video/x-msvideo",
