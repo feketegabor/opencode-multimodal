@@ -7,6 +7,8 @@ import { SessionRevert } from "./revert"
 import * as Session from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
+import { GeminiMediaStaging } from "@/provider/media-staging"
+import { ProviderMediaStrategy } from "@/provider/media-strategy"
 import { ModelID, ProviderID } from "../provider/schema"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
@@ -1250,9 +1252,19 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         })
       })
 
+      const shouldUseGeminiFiles = Effect.fnUntraced(function* (mime: string, url: string) {
+        const mediaModel = yield* provider
+          .getModel(info.model.providerID, info.model.modelID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined)))
+        return mediaModel
+          ? ProviderMediaStrategy.resolve(mediaModel).transport({ mime, url }).type === "gemini-files"
+          : false
+      })
+
       const validateFilePart = Effect.fnUntraced(function* (part: Extract<MessageV2.Part, { type: "file" }>) {
         const data = dataUrlInfo(part.url)
         if (!data) return
+        if (yield* shouldUseGeminiFiles(part.mime, part.url)) return
         yield* validateMediaBase64({
           filename: part.filename,
           mime: part.mime,
@@ -1319,7 +1331,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           switch (url.protocol) {
             case "data:":
               const data = dataUrlInfo(part.url)
-              if (data)
+              if (data && !(yield* shouldUseGeminiFiles(part.mime, part.url)))
                 yield* validateMediaBase64({
                   filename: part.filename,
                   mime: part.mime,
@@ -1494,6 +1506,37 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                     text: exit.value.output,
                   },
                   { ...part, mime, messageID: info.id, sessionID: input.sessionID },
+                ]
+              }
+
+              const fileURL = pathToFileURL(filepath).href
+              if (yield* shouldUseGeminiFiles(mime, fileURL)) {
+                const filename = part.filename!
+                return [
+                  ...(referenceContext ? [{ ...referenceContext, messageID: info.id, sessionID: input.sessionID }] : []),
+                  {
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: `Called the Read tool with the following input: {"filePath":"${filepath}"}`,
+                  },
+                  {
+                    id: part.id,
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "file",
+                    url: fileURL,
+                    mime,
+                    filename,
+                    source:
+                      part.source ??
+                      {
+                        type: "file",
+                        path: filepath,
+                        text: { value: filename, start: 0, end: filename.length },
+                      },
+                  },
                 ]
               }
 
@@ -1893,12 +1936,16 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
+            const providerInfo = yield* provider.getProvider(model.providerID)
+            const stagedMsgs = yield* Effect.promise(() =>
+              GeminiMediaStaging.stageMessages({ model, provider: providerInfo, messages: msgs }),
+            )
 
             const [skills, env, instructions, modelMsgs] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
-              MessageV2.toModelMessagesEffect(msgs, model),
+              MessageV2.toModelMessagesEffect(stagedMsgs, model),
             ])
             const system = [...env, ...instructions, ...(skills ? [skills] : [])]
             const format = lastUser.format ?? { type: "text" as const }

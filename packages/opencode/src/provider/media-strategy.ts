@@ -11,8 +11,6 @@ export type Strategy = {
   transport: (input: { mime: string; url: string }) => Transport
 }
 
-const GOOGLE_DATA_INLINE_BYTES = 20 * 1024 * 1024
-
 function modality(mime: string): Modality | undefined {
   if (mime.startsWith("audio/")) return "audio"
   if (mime.startsWith("image/")) return "image"
@@ -34,14 +32,6 @@ function scheme(url: string): Scheme | undefined {
   if (lower.startsWith("https://")) return "https"
   if (!url.includes(":")) return "file"
   return undefined
-}
-
-function dataBytes(url: string) {
-  const commaIndex = url.indexOf(",")
-  if (commaIndex === -1) return 0
-  const data = url.slice(commaIndex + 1)
-  if (!url.slice(0, commaIndex).toLowerCase().includes(";base64")) return Buffer.byteLength(data, "utf8")
-  return Math.floor((data.length * 3) / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0)
 }
 
 export function resolve(model: Provider.Model): Strategy {
@@ -72,7 +62,11 @@ export function resolve(model: Provider.Model): Strategy {
       if (!inputScheme) return { type: "reject", reason: `Unsupported media URL scheme for ${input.url}` }
       if (!schemes.has(inputScheme)) return { type: "reject", reason: `Model does not support ${inputScheme} media URLs` }
 
-      if (model.api.npm === "@ai-sdk/google" && inputScheme === "data" && dataBytes(input.url) > GOOGLE_DATA_INLINE_BYTES) {
+      if (
+        model.api.npm === "@ai-sdk/google" &&
+        (inputScheme === "data" || inputScheme === "file") &&
+        (inputModality === "audio" || inputModality === "video" || inputModality === "pdf")
+      ) {
         return { type: "gemini-files" }
       }
       if (inputScheme === "data" || inputScheme === "file") return { type: "inline" }

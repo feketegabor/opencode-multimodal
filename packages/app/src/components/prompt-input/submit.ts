@@ -89,12 +89,13 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
         model: `${input.draft.model.providerID}/${input.draft.model.modelID}`,
         variant: input.draft.variant,
         parts: media.map((attachment) => ({
-          id: Identifier.ascending("part"),
-          type: "file" as const,
-          mime: attachment.mime,
-          url: attachment.dataUrl,
-          filename: attachment.filename,
-        })),
+        id: Identifier.ascending("part"),
+        type: "file" as const,
+        mime: attachment.mime,
+        url: attachment.url ?? attachment.dataUrl ?? "",
+        filename: attachment.filename,
+        source: attachment.source,
+      })),
       })
       return true
     } catch (err) {
@@ -470,8 +471,9 @@ export function createPromptSubmit(input: PromptSubmitInput) {
               id: Identifier.ascending("part"),
               type: "file" as const,
               mime: attachment.mime,
-              url: attachment.dataUrl,
+              url: attachment.url ?? attachment.dataUrl ?? "",
               filename: attachment.filename,
+              source: attachment.source,
             })),
           })
           .catch((err) => {

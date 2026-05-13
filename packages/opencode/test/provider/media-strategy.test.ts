@@ -128,6 +128,10 @@ describe("ProviderMediaStrategy.resolve", () => {
           url: "https://generativelanguage.googleapis.com",
           npm: "@ai-sdk/google",
         },
+        capabilities: {
+          ...model().capabilities,
+          input: { ...model().capabilities.input, pdf: true },
+        },
       }),
     )
     const openaiCompatible = ProviderMediaStrategy.resolve(model())
@@ -141,19 +145,60 @@ describe("ProviderMediaStrategy.resolve", () => {
     expect(openaiCompatible.transport({ mime: "video/mp4", url: "https://youtu.be/abc123" }).type).toBe("reject")
   })
 
-  test("uses Gemini Files for Google data payloads over 20 MiB", () => {
-    expect(
-      ProviderMediaStrategy.resolve(
-        model({
-          providerID: ProviderID.make("google"),
-          api: {
-            id: "gemini-3-pro",
-            url: "https://generativelanguage.googleapis.com",
-            npm: "@ai-sdk/google",
-          },
-        }),
-      ).transport({ mime: "video/mp4", url: `data:video/mp4;base64,${"A".repeat(28 * 1024 * 1024)}` }),
-    ).toStrictEqual({ type: "gemini-files" })
+  test("uses Gemini Files for Google data audio video and PDF payloads", () => {
+    const strategy = ProviderMediaStrategy.resolve(
+      model({
+        providerID: ProviderID.make("google"),
+        api: {
+          id: "gemini-3-pro",
+          url: "https://generativelanguage.googleapis.com",
+          npm: "@ai-sdk/google",
+        },
+        capabilities: {
+          ...model().capabilities,
+          input: { ...model().capabilities.input, pdf: true },
+        },
+      }),
+    )
+
+    expect(strategy.transport({ mime: "audio/mpeg", url: "data:audio/mpeg;base64,AAA" })).toStrictEqual({
+      type: "gemini-files",
+    })
+    expect(strategy.transport({ mime: "video/mp4", url: "data:video/mp4;base64,AAA" })).toStrictEqual({
+      type: "gemini-files",
+    })
+    expect(strategy.transport({ mime: "application/pdf", url: "data:application/pdf;base64,AAA" })).toStrictEqual({
+      type: "gemini-files",
+    })
+    expect(strategy.transport({ mime: "image/png", url: "data:image/png;base64,AAA" })).toStrictEqual({ type: "inline" })
+  })
+
+  test("uses Gemini Files for Google local audio video and PDF files", () => {
+    const strategy = ProviderMediaStrategy.resolve(
+      model({
+        providerID: ProviderID.make("google"),
+        api: {
+          id: "gemini-3-pro",
+          url: "https://generativelanguage.googleapis.com",
+          npm: "@ai-sdk/google",
+        },
+        capabilities: {
+          ...model().capabilities,
+          input: { ...model().capabilities.input, pdf: true },
+        },
+      }),
+    )
+
+    expect(strategy.transport({ mime: "audio/mpeg", url: "file:///tmp/clip.mp3" })).toStrictEqual({
+      type: "gemini-files",
+    })
+    expect(strategy.transport({ mime: "video/mp4", url: "file:///tmp/clip.mp4" })).toStrictEqual({
+      type: "gemini-files",
+    })
+    expect(strategy.transport({ mime: "application/pdf", url: "file:///tmp/doc.pdf" })).toStrictEqual({
+      type: "gemini-files",
+    })
+    expect(strategy.transport({ mime: "image/png", url: "file:///tmp/image.png" })).toStrictEqual({ type: "inline" })
   })
 
   test("uses URL transport for accepted HTTP and HTTPS URLs", () => {

@@ -33,7 +33,18 @@ export interface MediaAttachmentPart {
   id: string
   filename: string
   mime: string
-  dataUrl: string
+  dataUrl?: string
+  previewUrl?: string
+  url?: string
+  source?: {
+    type: "file"
+    path: string
+    text: {
+      value: string
+      start: number
+      end: number
+    }
+  }
 }
 
 export type ContentPart = TextPart | FileAttachmentPart | AgentPart | MediaAttachmentPart

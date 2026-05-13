@@ -44,6 +44,7 @@ export const FilePaths = {
   list: "/file",
   content: "/file/content",
   status: "/file/status",
+  upload: "/file/upload",
 } as const
 
 export const FileApi = HttpApi.make("file")

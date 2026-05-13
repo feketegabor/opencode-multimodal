@@ -21,6 +21,8 @@ const promoted: Array<{ directory: string; sessionID: string }> = []
 const sentShell: string[] = []
 const syncedDirectories: string[] = []
 const promptRequests: Array<{ parts: Array<{ type: string; filename?: string; mime?: string; url?: string }> }> = []
+const commandRequests: Array<{ parts: Array<{ type: string; filename?: string; mime?: string; url?: string }> }> = []
+let commandList: Array<{ name: string }> = []
 
 let params: { id?: string } = {}
 let selected = "/repo/worktree-a"
@@ -50,7 +52,10 @@ const clientFor = (directory: string) => {
         promptRequests.push(input)
         return { data: undefined }
       },
-      command: async () => ({ data: undefined }),
+      command: async (input: { parts: Array<{ type: string; filename?: string; mime?: string; url?: string }> }) => {
+        commandRequests.push(input)
+        return { data: undefined }
+      },
       abort: async () => ({ data: undefined }),
     },
     worktree: {
@@ -144,7 +149,7 @@ beforeAll(async () => {
 
   mock.module("@/context/sync", () => ({
     useSync: () => ({
-      data: { command: [] },
+      data: { command: commandList },
       session: {
         optimistic: {
           add: (value: {
@@ -216,6 +221,8 @@ beforeEach(() => {
   sentShell.length = 0
   syncedDirectories.length = 0
   promptRequests.length = 0
+  commandRequests.length = 0
+  commandList = []
   promptValue = [{ type: "text", content: "ls", start: 0, end: 2 }]
   selected = "/repo/worktree-a"
   variant = undefined
@@ -359,6 +366,7 @@ describe("prompt submit worktree selection", () => {
         filename: "voice.mp3",
         mime: "audio/mpeg",
         dataUrl: "data:audio/mpeg;base64,AAA",
+        url: "file:///C:/opencode/uploads/voice.mp3",
       },
     ]
 
@@ -388,7 +396,53 @@ describe("prompt submit worktree selection", () => {
         type: "file",
         filename: "voice.mp3",
         mime: "audio/mpeg",
-        url: "data:audio/mpeg;base64,AAA",
+        url: "file:///C:/opencode/uploads/voice.mp3",
+      }),
+    )
+  })
+
+  test("forwards uploaded media file URLs into slash command requests", async () => {
+    params = { id: "session-1" }
+    commandList = [{ name: "review" }]
+    promptValue = [
+      { type: "text", content: "/review", start: 0, end: 7 },
+      {
+        type: "media",
+        id: "media_video",
+        filename: "clip.mp4",
+        mime: "video/mp4",
+        dataUrl: "data:video/mp4;base64,PREVIEW",
+        url: "file:///C:/opencode/uploads/clip.mp4",
+      },
+    ]
+
+    const submit = createPromptSubmit({
+      info: () => ({ id: "session-1" }),
+      mediaAttachments: () => promptValue.filter((part) => part.type === "media"),
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    await submit.handleSubmit(new Event("submit"))
+    await Promise.resolve()
+
+    expect(commandRequests).toHaveLength(1)
+    expect(commandRequests[0]?.parts).toContainEqual(
+      expect.objectContaining({
+        type: "file",
+        filename: "clip.mp4",
+        mime: "video/mp4",
+        url: "file:///C:/opencode/uploads/clip.mp4",
       }),
     )
   })

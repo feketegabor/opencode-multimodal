@@ -1,9 +1,42 @@
 import * as InstanceState from "@/effect/instance-state"
 import { File } from "@/file"
 import { Ripgrep } from "@/file/ripgrep"
+import { Global } from "@opencode-ai/core/global"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { randomUUID } from "crypto"
 import { Effect } from "effect"
+import path from "path"
+import { pathToFileURL } from "url"
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
+import { FilePaths } from "../groups/file"
+import { WorkspaceRouteContext } from "../middleware/workspace-routing"
+
+function headerValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0]
+  return value
+}
+
+function filename(request: HttpServerRequest.HttpServerRequest) {
+  const raw = headerValue(request.headers["x-opencode-filename"]) ?? "attachment"
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(raw)
+    } catch {
+      return raw
+    }
+  })()
+  return decoded.replace(/\0/g, "").split(/[\\/]/).filter(Boolean).at(-1)?.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_") || "attachment"
+}
+
+function mime(request: HttpServerRequest.HttpServerRequest) {
+  return (
+    headerValue(request.headers["x-opencode-mime"]) ||
+    headerValue(request.headers["content-type"])?.split(";")[0]?.trim() ||
+    "application/octet-stream"
+  )
+}
 
 export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handlers) =>
   Effect.gen(function* () {
@@ -50,5 +83,33 @@ export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handl
       .handle("list", list)
       .handle("content", content)
       .handle("status", status)
+  }),
+)
+
+export const fileUploadRoute = HttpRouter.use((router) =>
+  Effect.gen(function* () {
+    const fs = yield* AppFileSystem.Service
+    yield* router.add(
+      "POST",
+      FilePaths.upload,
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        yield* WorkspaceRouteContext
+        const name = filename(request)
+        const filepath = path.join(Global.Path.data, "uploads", `${randomUUID()}-${name}`)
+        yield* fs.writeWithDirs(filepath, new Uint8Array(yield* Effect.orDie(request.arrayBuffer)))
+        return HttpServerResponse.jsonUnsafe({
+          type: "file",
+          mime: mime(request),
+          filename: name,
+          url: pathToFileURL(filepath).href,
+          source: {
+            type: "file",
+            path: filepath,
+            text: { value: name, start: 0, end: name.length },
+          },
+        })
+      }),
+    )
   }),
 )

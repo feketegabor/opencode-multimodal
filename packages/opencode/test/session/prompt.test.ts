@@ -268,6 +268,42 @@ const cfg = {
   },
 }
 
+const geminiCfg = {
+  ...cfg,
+  model: "google/gemini-3.1-flash-lite",
+  provider: {
+    ...cfg.provider,
+    google: {
+      name: "Google",
+      id: "google",
+      env: [],
+      npm: "@ai-sdk/google",
+      api: "https://generativelanguage.googleapis.com",
+      models: {
+        "gemini-3.1-flash-lite": {
+          id: "gemini-3.1-flash-lite",
+          name: "Gemini 3.1 Flash Lite",
+          attachment: true,
+          reasoning: false,
+          temperature: true,
+          tool_call: true,
+          release_date: "2026-01-01",
+          limit: { context: 100000, output: 10000 },
+          cost: { input: 0, output: 0 },
+          modalities: {
+            input: ["text", "audio", "image", "video", "pdf"] as Array<"text" | "audio" | "image" | "video" | "pdf">,
+            output: ["text"] as Array<"text">,
+          },
+          options: {},
+        },
+      },
+      options: {
+        apiKey: "test-key",
+      },
+    },
+  },
+}
+
 function providerCfg(url: string) {
   return {
     ...cfg,
@@ -1987,6 +2023,67 @@ it.instance(
       yield* sessions.remove(session.id)
     }),
   { config: cfg },
+)
+
+it.instance(
+  "keeps Google local video file URLs for Gemini Files staging",
+  () =>
+    Effect.gen(function* () {
+      const { directory: dir } = yield* TestInstance
+      const file = path.join(dir, "clip.mp4")
+      yield* Effect.promise(() =>
+        Bun.write(file, Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0])),
+      )
+
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({})
+      const message = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "file", mime: "video/mp4", url: pathToFileURL(file).href, filename: "clip.mp4" }],
+      })
+
+      const stored = yield* MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+      const part = stored.parts.find(
+        (part): part is MessageV2.FilePart => part.type === "file" && part.filename === "clip.mp4",
+      )
+
+      expect(part?.mime).toBe("video/mp4")
+      expect(part?.url).toBe(pathToFileURL(file).href)
+      expect(part?.source).toMatchObject({ type: "file", path: file })
+
+      yield* sessions.remove(session.id)
+    }),
+  { config: geminiCfg },
+)
+
+it.instance(
+  "allows large Google data video URLs for Gemini Files staging",
+  () =>
+    Effect.gen(function* () {
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({})
+      const url = `data:video/mp4;base64,${"A".repeat(28 * 1024 * 1024)}`
+      const message = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "file", mime: "video/mp4", url, filename: "clip.mp4" }],
+      })
+
+      const stored = yield* MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+      const part = stored.parts.find(
+        (part): part is MessageV2.FilePart => part.type === "file" && part.filename === "clip.mp4",
+      )
+
+      expect(part?.url).toBe(url)
+
+      yield* sessions.remove(session.id)
+    }),
+  { config: geminiCfg },
 )
 
 it.instance(

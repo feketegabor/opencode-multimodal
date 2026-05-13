@@ -3,27 +3,11 @@ import { makeEventListener } from "@solid-primitives/event-listener"
 import { showToast } from "@opencode-ai/ui/toast"
 import { usePrompt, type ContentPart, type MediaAttachmentPart } from "@/context/prompt"
 import { useLanguage } from "@/context/language"
+import { useSDK } from "@/context/sdk"
 import { uuid } from "@/utils/uuid"
 import { getCursorPosition } from "./editor-dom"
 import { attachmentMime } from "./files"
 import { normalizePaste, pasteMode } from "./paste"
-
-function dataUrl(file: File, mime: string) {
-  return new Promise<string>((resolve) => {
-    const reader = new FileReader()
-    reader.addEventListener("error", () => resolve(""))
-    reader.addEventListener("load", () => {
-      const value = typeof reader.result === "string" ? reader.result : ""
-      const idx = value.indexOf(",")
-      if (idx === -1) {
-        resolve(value)
-        return
-      }
-      resolve(`data:${mime};base64,${value.slice(idx + 1)}`)
-    })
-    reader.readAsDataURL(file)
-  })
-}
 
 type PromptAttachmentsInput = {
   editor: () => HTMLDivElement | undefined
@@ -37,6 +21,7 @@ type PromptAttachmentsInput = {
 export function createPromptAttachments(input: PromptAttachmentsInput) {
   const prompt = usePrompt()
   const language = useLanguage()
+  const sdk = useSDK()
 
   const warn = () => {
     showToast({
@@ -55,15 +40,16 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     const editor = input.editor()
     if (!editor) return false
 
-    const url = await dataUrl(file, mime)
-    if (!url) return false
+    const uploaded = await sdk.uploadAttachment(file)
 
     const attachment: MediaAttachmentPart = {
       type: "media",
       id: uuid(),
       filename: file.name,
       mime,
-      dataUrl: url,
+      previewUrl: URL.createObjectURL(file),
+      url: uploaded.url,
+      source: uploaded.source?.type === "file" ? uploaded.source : undefined,
     }
     const cursor = prompt.cursor() ?? getCursorPosition(editor)
     prompt.set([...prompt.current(), attachment], cursor)
@@ -86,6 +72,9 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
 
   const removeAttachment = (id: string) => {
     const current = prompt.current()
+    current.forEach((part) => {
+      if (part.type === "media" && part.id === id && part.previewUrl) URL.revokeObjectURL(part.previewUrl)
+    })
     const next = current.filter((part) => part.type !== "media" || part.id !== id)
     prompt.set(next, prompt.cursor())
   }

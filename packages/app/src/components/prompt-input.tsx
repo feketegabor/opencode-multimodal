@@ -1319,7 +1319,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         <PromptMediaAttachments
           attachments={mediaAttachments()}
           onOpen={(attachment) =>
-            dialog.show(() => <ImagePreview src={attachment.dataUrl} alt={attachment.filename} />)
+            dialog.show(() => <ImagePreview src={attachment.previewUrl ?? attachment.dataUrl ?? attachment.url ?? ""} alt={attachment.filename} />)
           }
           onRemove={removeAttachment}
           removeLabel={language.t("prompt.attachment.remove")}

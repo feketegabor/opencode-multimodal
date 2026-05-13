@@ -41,7 +41,7 @@ export const PromptMediaAttachments: Component<PromptMediaAttachmentsProps> = (p
                   }
                 >
                   <button type="button" class={imageButtonClass} onClick={() => props.onOpen(attachment)}>
-                    <img src={attachment.dataUrl} alt={attachment.filename} class={imageClass} />
+                    <img src={attachment.previewUrl ?? attachment.dataUrl ?? attachment.url} alt={attachment.filename} class={imageClass} />
                     <div class={imageNameClass}>
                       <span class="text-10-regular text-white truncate block">{attachment.filename}</span>
                     </div>

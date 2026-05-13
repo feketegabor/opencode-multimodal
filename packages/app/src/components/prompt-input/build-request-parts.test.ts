@@ -109,6 +109,45 @@ describe("buildRequestParts", () => {
     ])
   })
 
+  test("submits uploaded media by server file URL instead of preview data URL", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "check upload", start: 0, end: 12 }],
+      context: [],
+      media: [
+        {
+          type: "media",
+          id: "media_uploaded",
+          filename: "clip.mp4",
+          mime: "video/mp4",
+          dataUrl: "data:video/mp4;base64,PREVIEW",
+          url: "file:///C:/Users/feket/AppData/Local/opencode/uploads/clip.mp4",
+          source: {
+            type: "file",
+            path: "C:\\Users\\feket\\AppData\\Local\\opencode\\uploads\\clip.mp4",
+            text: { value: "clip.mp4", start: 0, end: 8 },
+          },
+        },
+      ],
+      text: "check upload",
+      messageID: "msg_uploaded",
+      sessionID: "ses_uploaded",
+      sessionDirectory: "C:\\repo",
+    })
+
+    expect(result.requestParts.at(-1)).toEqual({
+      id: expect.any(String),
+      type: "file",
+      mime: "video/mp4",
+      url: "file:///C:/Users/feket/AppData/Local/opencode/uploads/clip.mp4",
+      filename: "clip.mp4",
+      source: {
+        type: "file",
+        path: "C:\\Users\\feket\\AppData\\Local\\opencode\\uploads\\clip.mp4",
+        text: { value: "clip.mp4", start: 0, end: 8 },
+      },
+    })
+  })
+
   test("deduplicates context files when prompt already includes same path", () => {
     const prompt: Prompt = [{ type: "file", path: "src/foo.ts", content: "@src/foo.ts", start: 0, end: 11 }]
 
