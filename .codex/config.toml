@@ -1,0 +1,22 @@
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = [
+  "C:\\Users\\feket\\opencode-multimodal",
+  "C:\\Users\\feket\\opencode-multimodal\\.codex\\state",
+]
+
+[shell_environment_policy.set]
+UV_CACHE_DIR = ".codex/state/uv"
+
+[features]
+goals = true
+memories = true
+
+[memories]
+use_memories = true
+generate_memories = true
+
+[windows]
+sandbox = "unelevated"
