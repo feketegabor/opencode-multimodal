@@ -31,6 +31,7 @@ type Options = {
   messages: MessageV2.WithParts[]
   upload?: (input: UploadInput) => Promise<UploadResult>
   cachePath?: string
+  inlineMaxBytes?: number
 }
 
 type GeminiFile = {
@@ -38,6 +39,12 @@ type GeminiFile = {
   uri?: string
   state?: string
   expirationTime?: string
+}
+
+const CUSTOM_GOOGLE_INLINE_MAX_BYTES = 50 * 1024 * 1024
+
+function customGoogleTransport(provider: Provider.Info) {
+  return provider.options.apiKey === ""
 }
 
 function apiKey(provider: Provider.Info) {
@@ -181,15 +188,35 @@ function sourcePath(part: MessageV2.FilePart) {
   return undefined
 }
 
-function shouldStage(input: { model: Provider.Model; part: MessageV2.FilePart }) {
-  const strategy = ProviderMediaStrategy.resolve(input.model)
+function shouldStage(input: { model: Provider.Model; provider: Provider.Info; part: MessageV2.FilePart }) {
+  const strategy = ProviderMediaStrategy.resolve(input.model, input.provider)
   const transport = strategy.transport({ mime: input.part.mime, url: input.part.url })
   return transport.type === "gemini-files"
 }
 
+async function inlineFilePart(input: Options, part: MessageV2.FilePart) {
+  const max = input.inlineMaxBytes ?? CUSTOM_GOOGLE_INLINE_MAX_BYTES
+  const source = sourcePath(part)
+  if (source) {
+    const file = Bun.file(source)
+    const bytes = await file.bytes()
+    if (file.size > max)
+      throw new Error(`Attachment ${part.filename ?? "attachment"} (${part.mime}) exceeds inline media limit ${max} bytes`)
+    return { ...part, url: `data:${part.mime};base64,${Buffer.from(bytes).toString("base64")}` }
+  }
+  const bytes = dataUrlBytes(part.url)
+  const media = { bytes, size: bytes.byteLength }
+  if (media.size > max)
+    throw new Error(`Attachment ${part.filename ?? "attachment"} (${part.mime}) exceeds inline media limit ${max} bytes`)
+  return { ...part, url: `data:${part.mime};base64,${Buffer.from(media.bytes).toString("base64")}` }
+}
+
 async function stageFilePart(input: Options, part: MessageV2.FilePart) {
   if (input.model.api.npm !== "@ai-sdk/google") return part
-  if (!shouldStage({ model: input.model, part })) return part
+  const strategy = ProviderMediaStrategy.resolve(input.model, input.provider)
+  const transport = strategy.transport({ mime: part.mime, url: part.url })
+  if (customGoogleTransport(input.provider) && transport.type === "inline") return inlineFilePart(input, part)
+  if (!shouldStage({ model: input.model, provider: input.provider, part })) return part
   const key = apiKey(input.provider)
   if (!key) throw new Error("Gemini Files staging requires a Google API key")
   const uploadInput = {

@@ -74,6 +74,14 @@ const envOnlyProvider: Provider.Info = {
   key: undefined,
 }
 
+const customFetchProvider: Provider.Info = {
+  ...provider,
+  options: {
+    apiKey: "",
+    fetch: async () => new Response(),
+  },
+}
+
 function userWithFile(url: string, sourcePath = "C:\\media\\clip.mp4", mime = "video/mp4"): MessageV2.WithParts {
   return {
     info: { role: "user", id: "msg", sessionID: "session" } as MessageV2.User,
@@ -203,6 +211,43 @@ describe("GeminiMediaStaging.stageMessages", () => {
     })
 
     expect((result[0].parts[0] as MessageV2.FilePart).url).toBe("https://youtu.be/abc123")
+  })
+
+  test("keeps OAuth-style Google transports on inline media instead of Gemini Files", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-gemini-oauth-inline-"))
+    try {
+      const file = path.join(dir, "oauth-clip.mp4")
+      await fs.writeFile(file, "oauth-video")
+
+      const result = await GeminiMediaStaging.stageMessages({
+        model: googleModel,
+        provider: customFetchProvider,
+        messages: [userWithFile(pathToFileURL(file).href, file)],
+        upload: async () => {
+          throw new Error("unexpected Gemini Files upload")
+        },
+      })
+
+      expect((result[0].parts[0] as MessageV2.FilePart).url).toBe(
+        `data:video/mp4;base64,${Buffer.from("oauth-video").toString("base64")}`,
+      )
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects oversized inline media for OAuth-style Google transports before upload", async () => {
+    await expect(
+      GeminiMediaStaging.stageMessages({
+        model: googleModel,
+        provider: customFetchProvider,
+        messages: [userWithFile(`data:video/mp4;base64,${Buffer.from("too-large-video").toString("base64")}`)],
+        inlineMaxBytes: 8,
+        upload: async () => {
+          throw new Error("unexpected Gemini Files upload")
+        },
+      }),
+    ).rejects.toThrow("exceeds inline media limit")
   })
 
   test("does not upload media rejected by model metadata", async () => {
@@ -455,5 +500,17 @@ describe("GeminiMediaStaging.stageMessages", () => {
       },
     })
     expect(parts[1].inlineData).toBeUndefined()
+  })
+
+  test("AI SDK serializes custom Google inline data URLs as inlineData", async () => {
+    const parts = await googleParts(`data:video/mp4;base64,${Buffer.from("oauth-video").toString("base64")}`)
+
+    expect(parts[1]).toEqual({
+      inlineData: {
+        mimeType: "video/mp4",
+        data: Buffer.from("oauth-video").toString("base64"),
+      },
+    })
+    expect(parts[1].fileData).toBeUndefined()
   })
 })

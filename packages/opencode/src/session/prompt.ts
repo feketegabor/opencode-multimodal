@@ -1256,8 +1256,11 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         const mediaModel = yield* provider
           .getModel(info.model.providerID, info.model.modelID)
           .pipe(Effect.catch(() => Effect.succeed(undefined)))
+        const mediaProvider = yield* provider
+          .getProvider(info.model.providerID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined)))
         return mediaModel
-          ? ProviderMediaStrategy.resolve(mediaModel).transport({ mime, url }).type === "gemini-files"
+          ? ProviderMediaStrategy.resolve(mediaModel, mediaProvider).transport({ mime, url }).type === "gemini-files"
           : false
       })
 

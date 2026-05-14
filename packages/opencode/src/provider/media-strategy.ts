@@ -11,6 +11,10 @@ export type Strategy = {
   transport: (input: { mime: string; url: string }) => Transport
 }
 
+function customGoogleTransport(provider?: Provider.Info) {
+  return provider?.options.apiKey === ""
+}
+
 function modality(mime: string): Modality | undefined {
   if (mime.startsWith("audio/")) return "audio"
   if (mime.startsWith("image/")) return "image"
@@ -34,12 +38,15 @@ function scheme(url: string): Scheme | undefined {
   return undefined
 }
 
-export function resolve(model: Provider.Model): Strategy {
+export function resolve(model: Provider.Model, provider?: Provider.Info): Strategy {
+  const customGoogle = model.api.npm === "@ai-sdk/google" && customGoogleTransport(provider)
   const accepted = new Set(
     (["audio", "image", "pdf", "text", "video"] as const).filter((item) => model.capabilities.input[item]),
   )
   const schemes = new Set<Scheme>(
-    model.api.npm === "@ai-sdk/google"
+    customGoogle
+      ? ["data", "file"]
+      : model.api.npm === "@ai-sdk/google"
       ? ["data", "file", "https", "youtube"]
       : ["data", "file", "http", "https"],
   )
@@ -60,10 +67,13 @@ export function resolve(model: Provider.Model): Strategy {
 
       const inputScheme = scheme(input.url)
       if (!inputScheme) return { type: "reject", reason: `Unsupported media URL scheme for ${input.url}` }
+      if (customGoogle && !schemes.has(inputScheme))
+        return { type: "reject", reason: "Custom Google transports only support inline file data" }
       if (!schemes.has(inputScheme)) return { type: "reject", reason: `Model does not support ${inputScheme} media URLs` }
 
       if (
         model.api.npm === "@ai-sdk/google" &&
+        !customGoogle &&
         (inputScheme === "data" || inputScheme === "file") &&
         (inputModality === "audio" || inputModality === "video" || inputModality === "pdf")
       ) {

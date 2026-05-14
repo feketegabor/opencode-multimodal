@@ -304,6 +304,20 @@ const geminiCfg = {
   },
 }
 
+const geminiCustomFetchCfg = {
+  ...geminiCfg,
+  provider: {
+    ...geminiCfg.provider,
+    google: {
+      ...geminiCfg.provider.google,
+      options: {
+        apiKey: "",
+        fetch: async () => new Response(),
+      },
+    },
+  },
+}
+
 function providerCfg(url: string) {
   return {
     ...cfg,
@@ -2057,6 +2071,39 @@ it.instance(
       yield* sessions.remove(session.id)
     }),
   { config: geminiCfg },
+)
+
+it.instance(
+  "resolves OAuth-style Google local video file URLs to data URLs",
+  () =>
+    Effect.gen(function* () {
+      const { directory: dir } = yield* TestInstance
+      const file = path.join(dir, "oauth-clip.mp4")
+      yield* Effect.promise(() =>
+        Bun.write(file, Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0])),
+      )
+
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({})
+      const message = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "file", mime: "video/mp4", url: pathToFileURL(file).href, filename: "oauth-clip.mp4" }],
+      })
+
+      const stored = yield* MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+      const part = stored.parts.find(
+        (part): part is MessageV2.FilePart => part.type === "file" && part.filename === "oauth-clip.mp4",
+      )
+
+      expect(part?.mime).toBe("video/mp4")
+      expect(part?.url.startsWith("data:video/mp4;base64,")).toBe(true)
+
+      yield* sessions.remove(session.id)
+    }),
+  { config: geminiCustomFetchCfg },
 )
 
 it.instance(
