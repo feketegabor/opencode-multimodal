@@ -1465,10 +1465,123 @@ git commit -m "fix: stabilize multimodal verification"
 
 If no changes were needed, do not create an empty commit.
 
+### Task 10: Surface Parity, PR Hygiene, And Merge Readiness
+
+#### Status: Not started
+
+This task tracks the remaining work discovered during the post-implementation surface review. The branch has broad implementation coverage, but it is not ready to merge until these checks are complete or explicitly scoped out in the PR description.
+
+**Files:**
+- Update: `docs/superpowers/specs/2026-05-11-opencode-multimodal-design.md`
+- Update: `docs/superpowers/plans/2026-05-12-opencode-multimodal-implementation.md`
+- Potentially modify implementation files only after a reviewed follow-up design decision.
+
+- [x] **Step 1: Document current surface status and gaps**
+
+Record the implemented, partially covered, and unproven surfaces in the design spec so merge discussion can reference a stable checklist instead of chat memory.
+
+2026-05-15 result: added `Current Implementation Status` to the design spec with implemented coverage, remaining gaps, and merge readiness criteria.
+
+- [ ] **Step 2: Clean PR history against upstream**
+
+Refresh from `upstream/dev` and rebuild the PR so it contains only multimodal implementation commits, not upstream catch-up commits.
+
+Required checks:
+
+```bash
+git fetch upstream dev
+git log --oneline --left-right upstream/dev...HEAD
+git diff --stat upstream/dev...HEAD
+```
+
+Expected: upstream-only commits are not present in the PR side, and the changed files match the multimodal feature scope plus project-local docs/config that the user approved.
+
+- [ ] **Step 3: Verify shared web UI in Chrome**
+
+Use the real Chrome automation surface, not only the in-app browser, to upload a real MP4 through the UI and send a Gemini API-key prompt.
+
+Evidence to capture:
+
+- The attachment chip is visible before send.
+- The sent timeline message still shows the media attachment.
+- The upload exists in the OpenCode user data upload store.
+- Gemini Files cache/request-shape evidence shows the model request used a Files API URI, not inline base64, for the local MP4.
+
+- [ ] **Step 4: Verify desktop sidecar or document desktop scope**
+
+Run a packaged or dev desktop smoke against the local sidecar when feasible. If not feasible in this branch, explicitly document desktop as shared-app covered but not packaged-E2E verified.
+
+Required coverage:
+
+- Native file picker can select audio/video media.
+- Sidecar credentials allow `/file/upload`.
+- Windows WSL path conversion behavior remains unchanged for file-path references.
+- Remote-server desktop mode uses upload rather than a local path shortcut.
+
+- [ ] **Step 5: Verify CLI and TUI live media paths**
+
+Run at least one CLI or TUI local media smoke with a real provider, plus a no-provider dry path where practical.
+
+Minimum evidence:
+
+- `opencode run --file <mp4-or-mp3>` sends the detected media MIME, not `text/plain`.
+- TUI path-paste renders the correct `Audio` or `Video` label.
+- Oversized inline-only media produces a clear error instead of silent omission.
+
+- [ ] **Step 6: Verify provider matrix claims**
+
+Run or explicitly defer protected live tests for:
+
+- Gemini API-key: MP4 through Files API, oversized local MP4 through Files API, MP3 through Files API or inline as strategy decides, YouTube URL.
+- Gemini OAuth / Antigravity custom Google: inline small MP4/MP3 and explicit limit behavior; no Files API claim unless proven.
+- OpenCode Go: MiMo v2.5 audio/video, Kimi K2.6 visual video, Qwen Plus visual video if configured.
+
+Do not request new credentials until the exact next experiment is ready. Use existing env/auth where available and redact all request/response artifacts.
+
+- [ ] **Step 7: Decide large-file UX**
+
+Make one explicit design choice before adding more code:
+
+- Reject oversized inline-only media with a clear error and let the agent/user split it manually.
+- Add automatic chunking/transcoding as a separate feature.
+- Add provider-specific chunking only for known OAuth/custom endpoints.
+
+Current recommendation: reject oversized inline-only media for this PR, document the error path, and treat automatic chunking/transcoding as a follow-up design.
+
+- [ ] **Step 8: Run final verification**
+
+Run from package directories only:
+
+```bash
+cd packages/opencode
+bun test test/provider/media-staging.test.ts test/provider/media-strategy.test.ts test/server/httpapi-file.test.ts test/session/message-v2.test.ts test/tool/read.test.ts test/util/media.test.ts test/cli/run/file-attachment.test.ts test/cli/cmd/tui/prompt-part.test.ts
+bun test --timeout 30000 test/session/prompt.test.ts -t "resolves audio file URLs|resolves video file URLs|keeps Google local video file URLs|resolves OAuth-style Google local video file URLs|allows large Google data video URLs|rejects oversized audio and video attachments"
+bun typecheck
+
+cd ../app
+bun test src/components/prompt-input/attachments.test.ts src/components/prompt-input/build-request-parts.test.ts src/components/prompt-input/submit.test.ts src/utils/prompt.test.ts
+bun typecheck
+
+cd ../sdk/js
+bun typecheck
+```
+
+Expected: all commands pass. If broad prompt lifecycle tests still require a longer timeout, record that separately and do not conflate it with media test failure.
+
+- [ ] **Step 9: Run external review before readying PR**
+
+Before marking the PR ready:
+
+- Run a local code review with `claude -p` using Opus 4.7 / max reasoning if available.
+- Spawn a clean-context GPT-5.5 extra-high subagent review using the Superpowers code-review skill.
+- If feasible, request a GitHub Copilot PR review agent.
+
+Each review prompt must include the design goal, implemented scope, known gaps, live-test evidence, and the explicit non-claims around OAuth/Antigravity/OpenCode Go until live tests pass.
+
 ## Self-Review Notes
 
 Spec coverage:
-- All entry modes are covered by core `FilePart`, CLI/TUI, SDK/HTTP, ACP/tool-result plumbing, and shared app UI tasks.
+- All entry modes are represented by core `FilePart`, CLI/TUI, SDK/HTTP, ACP/tool-result plumbing, and shared app UI tasks. Some surfaces remain API-compatible or code-path covered rather than live-E2E verified; see Task 10.
 - Metadata-driven support is covered by `ProviderMediaStrategy.resolve`.
 - MiMo V2.5 is treated as a live-test candidate, not a hard-coded implementation.
 - Kimi/Qwen visual-only video is represented by `videoAudio: "visual-only"`.

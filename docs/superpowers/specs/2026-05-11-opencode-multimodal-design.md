@@ -343,6 +343,46 @@ Protected live experiments:
 
 Live experiments should return concise pass/fail summaries and scrub request/response details.
 
+## Current Implementation Status
+
+This section records the implementation state after the first multimodal branch pass. It is intentionally stricter than "code exists": a surface is only complete when its entry path, provider conversion, user-visible error behavior, and at least one appropriate verification path are covered.
+
+### Implemented And Covered
+
+- Shared `packages/app` prompt UI now accepts image, PDF, audio, and video files through the common browser/desktop attachment path.
+- Browser and desktop shared UI uploads selected media through `/file/upload`, receives a server-local `file://` part, keeps only object URLs for local preview, and submits the returned file part through the existing prompt API.
+- The server upload route stores media under the OpenCode user data directory, rejects unsupported MIME types, rejects uploads above the configured route limit before persistence when possible, and returns canonical `FilePartInput` metadata.
+- CLI `opencode run --file` now sniffs media MIME from file bytes instead of forcing every file to `text/plain`, while preserving directory behavior and avoiding ambiguous TypeScript-as-video misclassification.
+- TUI path-paste handling recognizes image, PDF, audio, and video files, renders stable media labels such as `Image`, `PDF`, `Audio`, and `Video`, and continues to use file parts rather than a separate media schema.
+- The read tool can return image, PDF, audio, and video attachments for supported media files.
+- `MessageV2.toModelMessagesEffect` converts audio/video user file parts into AI SDK file content and strips or extracts media consistently when compaction/tool-result handling requires it.
+- Provider strategy and Gemini staging code distinguish model capability from transport capability. Google API-key media can be staged through Gemini Files API; Gemini YouTube URLs pass through as URL-backed file parts; custom/OAuth-style Google transports stay inline with explicit size checks.
+- Focused tests cover shared app attachment upload, request-part building, server upload, CLI MIME detection, TUI media labels, media read tool behavior, message conversion, provider strategy, Gemini Files staging, YouTube request shape, and audio/video prompt resolution.
+
+### Partially Covered Or Not Yet Proven
+
+- Desktop is code-covered through shared `packages/app`, but packaged desktop sidecar behavior has not been separately smoke-tested. Native picker, sidecar credential routing, WSL path conversion, and desktop-to-remote-server behavior still need explicit verification.
+- TUI is covered by unit tests and code-path inspection, but it lacks a polished pre-send UX for provider/model modality rejection and inline-size limits. Live terminal E2E with real audio/video and a real provider has not been run.
+- CLI is covered for MIME detection and core prompt flow, but provider-limit and oversize behavior should be documented in user-facing errors for non-Gemini inline-only providers.
+- ACP, MCP resource, SDK-only clients, and plugins can submit `FilePartInput` values, but they do not get the shared upload UI or preflight UX. They should be considered API-compatible rather than UX-complete.
+- Gemini API-key path is the best-proven provider path. Gemini OAuth / Antigravity-style providers intentionally do not use Gemini Files API and still need live inline-size and request-shape testing.
+- OpenCode Go, MiMo v2.5, Kimi K2.5/K2.6, Qwen Plus visual-video, and any audio/video OpenAI-compatible path still require protected live provider tests before the branch can claim provider-specific support.
+- Large local media is not automatically chunked or transcoded. Current behavior is stage through Gemini Files API where the strategy supports it, keep inline only within configured limits for inline-only transports, or reject clearly. Automatic chunking remains a separate design decision.
+
+### Merge Readiness Criteria
+
+The branch should not be marked ready to merge until these are true:
+
+1. The PR diff contains only our multimodal commits and no upstream catch-up commits.
+2. `upstream/dev` has been merged or rebased cleanly, then focused tests and package typechecks have been rerun from package directories.
+3. Shared web app upload/send has been verified in Chrome with a real uploaded MP4 and the timeline shows the sent media attachment.
+4. Packaged or dev desktop sidecar smoke has verified at least one uploaded audio/video attachment path, or the PR explicitly documents desktop as shared-app covered but not packaged-E2E verified.
+5. TUI or CLI live smoke has verified at least one local audio/video `file://` attachment path.
+6. Gemini API-key Files API staging has been verified with request-shape evidence that the model call uses a Files API URI, not inline base64, for a local MP4.
+7. OAuth/Antigravity/custom-Google behavior is either live-tested and documented or explicitly scoped as inline-only/experimental with size-limit rejection.
+8. Remaining provider-specific claims for OpenCode Go, MiMo, Kimi, and Qwen are limited to metadata/strategy support unless protected live tests pass.
+9. An external code review has been run with the project vision, implemented scope, known gaps, and verification evidence included in the review prompt.
+
 ## Implementation Boundary
 
 Implementation should happen only after this spec is approved. The implementation branch should start from current `upstream/dev` merged into local `dev` or from a new clean branch based on `upstream/dev`, depending on the user's preference at implementation time.
