@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { ProviderTransform } from "@/provider/transform"
 import { ModelID, ProviderID } from "../../src/provider/schema"
+import type { Provider } from "../../src/provider/provider"
 
 describe("ProviderTransform.options - setCacheKey", () => {
   const sessionID = "test-session-123"
@@ -1403,6 +1404,109 @@ describe("ProviderTransform.message - empty image handling", () => {
     expect(result[0].content[2]).toEqual({
       type: "text",
       text: "ERROR: Image file is empty or corrupted. Please provide a valid image.",
+    })
+  })
+})
+
+describe("ProviderTransform.message - media transport strategy", () => {
+  const model = (override: Partial<Provider.Model> = {}): Provider.Model => ({
+    id: ModelID.make("kimi-k2.6"),
+    providerID: ProviderID.make("opencode-go"),
+    api: {
+      id: "kimi-k2.6",
+      url: "https://opencode.ai/zen/go/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: "Kimi K2.6",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: true, pdf: false },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    limit: { context: 0, input: 0, output: 0 },
+    status: "active",
+    options: {},
+    headers: {},
+    release_date: "2026-01-01",
+    ...override,
+  })
+
+  test("rejects provider-unsupported media URL schemes even when model metadata accepts video", () => {
+    const result = ProviderTransform.message(
+      [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "describe" },
+            { type: "file", mediaType: "video/mp4", filename: "youtube.mp4", data: "https://youtu.be/abc123" },
+          ],
+        },
+      ],
+      model(),
+      {},
+    )
+
+    expect(result[0].content[1]).toEqual({
+      type: "text",
+      text: 'ERROR: Cannot read "youtube.mp4" (Model does not support youtube media URLs). Inform the user.',
+    })
+  })
+
+  test("rejects audio for visual-only video models", () => {
+    const result = ProviderTransform.message(
+      [
+        {
+          role: "user",
+          content: [
+            { type: "file", mediaType: "audio/mpeg", filename: "clip.mp3", data: "data:audio/mpeg;base64,AAA" },
+          ],
+        },
+      ],
+      model(),
+      {},
+    )
+
+    expect(result[0].content[0]).toEqual({
+      type: "text",
+      text: 'ERROR: Cannot read "clip.mp3" (this model does not support audio input). Inform the user.',
+    })
+  })
+
+  test("allows Google YouTube URL transport for Gemini models", () => {
+    const result = ProviderTransform.message(
+      [
+        {
+          role: "user",
+          content: [
+            { type: "file", mediaType: "video/mp4", filename: "youtube.mp4", data: "https://youtu.be/abc123" },
+          ],
+        },
+      ],
+      model({
+        providerID: ProviderID.make("google"),
+        api: {
+          id: "gemini-3.1-flash-lite",
+          url: "https://generativelanguage.googleapis.com",
+          npm: "@ai-sdk/google",
+        },
+        capabilities: {
+          ...model().capabilities,
+          input: { ...model().capabilities.input, audio: true, pdf: true },
+        },
+      }),
+      {},
+    )
+
+    expect(result[0].content[0]).toEqual({
+      type: "file",
+      mediaType: "video/mp4",
+      filename: "youtube.mp4",
+      data: "https://youtu.be/abc123",
     })
   })
 })

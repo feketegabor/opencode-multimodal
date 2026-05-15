@@ -41,8 +41,8 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       get url() {
         return globalSDK.url
       },
-      uploadAttachment(file: File) {
-        return globalSDK.uploadAttachment({ directory: directory(), file })
+      uploadAttachment(file: File, mime?: string) {
+        return globalSDK.uploadAttachment({ directory: directory(), file, mime })
       },
       createClient(opts: Parameters<typeof globalSDK.createClient>[0]) {
         return globalSDK.createClient(opts)

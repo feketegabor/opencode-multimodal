@@ -249,7 +249,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           ...opts,
         })
       },
-      async uploadAttachment(input: { directory?: string; file: File }): Promise<FilePartInput> {
+      async uploadAttachment(input: { directory?: string; file: File; mime?: string }): Promise<FilePartInput> {
         const s = server.current
         if (!s) throw new Error(language.t("error.globalSDK.serverNotAvailable"))
         const url = new URL("/file/upload", s.http.url)
@@ -257,7 +257,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         const response = await (platform.fetch ?? fetch)(url, {
           method: "POST",
           headers: {
-            "content-type": input.file.type || "application/octet-stream",
+            "content-type": input.mime || input.file.type || "application/octet-stream",
+            ...(input.mime ? { "x-opencode-mime": input.mime } : {}),
             "x-opencode-filename": encodeURIComponent(input.file.name),
             ...(s.http.password
               ? {

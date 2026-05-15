@@ -5,6 +5,7 @@ import type * as Provider from "./provider"
 import type * as ModelsDev from "@opencode-ai/core/models"
 import { iife } from "@/util/iife"
 import { Flag } from "@opencode-ai/core/flag/flag"
+import { ProviderMediaStrategy } from "./media-strategy"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -389,7 +390,18 @@ function applyCaching(msgs: ModelMessage[], model: Provider.Model): ModelMessage
   return msgs
 }
 
-function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
+function partURL(part: unknown) {
+  if (!part || typeof part !== "object") return undefined
+  const content = part as { type?: unknown; image?: unknown; data?: unknown }
+  if (content.type === "image") return String(content.image)
+  if (content.type !== "file") return undefined
+  if (typeof content.data === "string") return content.data
+  if (content.data instanceof URL) return content.data.href
+  return undefined
+}
+
+function unsupportedParts(msgs: ModelMessage[], model: Provider.Model, provider?: Provider.Info): ModelMessage[] {
+  const strategy = ProviderMediaStrategy.resolve(model, provider)
   return msgs.map((msg) => {
     if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
@@ -414,12 +426,22 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
       const filename = part.type === "file" ? part.filename : undefined
       const modality = mimeToModality(mime)
       if (!modality) return part
-      if (model.capabilities.input[modality]) return part
+      if (!model.capabilities.input[modality]) {
+        const name = filename ? `"${filename}"` : modality
+        return {
+          type: "text" as const,
+          text: `ERROR: Cannot read ${name} (this model does not support ${modality} input). Inform the user.`,
+        }
+      }
 
+      const url = partURL(part)
+      if (!url) return part
+      const transport = strategy.transport({ mime, url })
+      if (transport.type !== "reject") return part
       const name = filename ? `"${filename}"` : modality
       return {
         type: "text" as const,
-        text: `ERROR: Cannot read ${name} (this model does not support ${modality} input). Inform the user.`,
+        text: `ERROR: Cannot read ${name} (${transport.reason}). Inform the user.`,
       }
     })
 
@@ -427,8 +449,8 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMes
   })
 }
 
-export function message(msgs: ModelMessage[], model: Provider.Model, options: Record<string, unknown>) {
-  msgs = unsupportedParts(msgs, model)
+export function message(msgs: ModelMessage[], model: Provider.Model, options: Record<string, unknown>, provider?: Provider.Info) {
+  msgs = unsupportedParts(msgs, model, provider)
   msgs = normalizeMessages(msgs, model, options)
   if (
     (model.providerID === "anthropic" ||

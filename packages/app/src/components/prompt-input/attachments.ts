@@ -41,7 +41,7 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     const editor = input.editor()
     if (!editor) return false
 
-    const uploaded = await sdk.uploadAttachment(file).catch((err) => {
+    const uploaded = await sdk.uploadAttachment(file, mime).catch((err) => {
       showToast({
         title: language.t("common.requestFailed"),
         description: err instanceof Error ? err.message : undefined,

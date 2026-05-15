@@ -8,7 +8,8 @@ const toasts: Array<{ title: string; description?: string }> = []
 const promptSets: Array<{ prompt: Prompt; cursor: number | undefined }> = []
 const revoked: string[] = []
 let promptValue: Prompt = []
-let uploadAttachment: (file: File) => Promise<{ url: string }>
+let uploadedInputs: Array<{ file: File; mime?: string }>
+let uploadAttachment: (file: File, mime?: string) => Promise<{ url: string }>
 
 beforeAll(async () => {
   mock.module("@opencode-ai/ui/toast", () => ({
@@ -45,8 +46,12 @@ beforeEach(() => {
   toasts.length = 0
   promptSets.length = 0
   revoked.length = 0
+  uploadedInputs = []
   promptValue = []
-  uploadAttachment = async () => ({ url: "file:///uploads/clip.mp4" })
+  uploadAttachment = async (file, mime) => {
+    uploadedInputs.push({ file, mime })
+    return { url: "file:///uploads/clip.mp4" }
+  }
   URL.createObjectURL = () => "blob:preview"
   URL.revokeObjectURL = (url: string) => {
     revoked.push(url)
@@ -87,6 +92,17 @@ describe("createPromptAttachments", () => {
       expect(await attachments.addAttachment(new File(["x"], "clip.mp4", { type: "video/mp4" }))).toBe(true)
       dispose()
       expect(revoked).toContain("blob:preview")
+    })
+  })
+
+  test("uploads with the normalized attachment MIME", async () => {
+    await createRoot(async (dispose) => {
+      const attachments = createPromptAttachments(input())
+
+      expect(await attachments.addAttachment(new File(["x"], "clip.mp4"))).toBe(true)
+      expect(uploadedInputs).toMatchObject([{ mime: "video/mp4" }])
+
+      dispose()
     })
   })
 })

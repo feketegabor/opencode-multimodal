@@ -119,6 +119,22 @@ describe("file HttpApi", () => {
     expect(part.source?.path).toBe(fileURLToPath(part.url))
   })
 
+  test("uses normalized upload MIME when browser file type is generic", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const response = await upload(tmp.path, new Uint8Array([1, 2, 3]), {
+      "content-type": "application/octet-stream",
+      "x-opencode-mime": "video/mp4",
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      type: "file",
+      mime: "video/mp4",
+      filename: "clip.mp4",
+    })
+  })
+
   test("rejects oversized browser media uploads before persistence", async () => {
     await using tmp = await tmpdir({ git: true })
 
