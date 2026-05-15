@@ -7,6 +7,8 @@ import { SessionRevert } from "./revert"
 import * as Session from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
+import { GeminiMediaStaging } from "@/provider/media-staging"
+import { ProviderMediaStrategy } from "@/provider/media-strategy"
 import { ModelID, ProviderID } from "../provider/schema"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
@@ -63,6 +65,30 @@ import * as DateTime from "effect/DateTime"
 import { eq } from "@/storage/db"
 import * as Database from "@/storage/db"
 import { SessionTable } from "./session.sql"
+import { isAudioAttachment, isVideoAttachment } from "@/util/media"
+
+const DEFAULT_AUDIO_VIDEO_BASE64_BYTES = 20 * 1024 * 1024
+
+class AttachmentSizeError extends Schema.TaggedErrorClass<AttachmentSizeError>()("SessionPromptAttachmentSizeError", {
+  filename: Schema.String,
+  mime: Schema.String,
+  max: Schema.Number,
+}) {
+  override get message() {
+    return `Attachment ${this.filename} (${this.mime}) exceeds configured max_base64_bytes ${this.max}`
+  }
+}
+
+function dataUrlInfo(url: string) {
+  const idx = url.indexOf(",")
+  if (idx === -1) return
+  const header = url.slice(0, idx)
+  if (!header.toLowerCase().includes(";base64")) return
+  return {
+    mime: header.slice("data:".length).split(";")[0] || "text/plain",
+    base64: url.slice(idx + 1),
+  }
+}
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -167,10 +193,10 @@ function referenceTextPart(input: {
 
 export interface Interface {
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
-  readonly prompt: (input: PromptInput) => Effect.Effect<MessageV2.WithParts, Image.Error>
+  readonly prompt: (input: PromptInput) => Effect.Effect<MessageV2.WithParts, Image.Error | AttachmentSizeError>
   readonly loop: (input: LoopInput) => Effect.Effect<MessageV2.WithParts>
   readonly shell: (input: ShellInput) => Effect.Effect<MessageV2.WithParts, Session.BusyError>
-  readonly command: (input: CommandInput) => Effect.Effect<MessageV2.WithParts, Image.Error>
+  readonly command: (input: CommandInput) => Effect.Effect<MessageV2.WithParts, Image.Error | AttachmentSizeError>
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
 }
 
@@ -351,7 +377,7 @@ export const layer = Layer.effect(
           (yield* provider.getModel(input.providerID, input.modelID)))
       const msgs = onlySubtasks
         ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
-        : yield* MessageV2.toModelMessagesEffect(context, mdl)
+        : yield* MessageV2.toModelMessagesEffect(context, mdl, { stripMedia: true })
       const text = yield* llm
         .stream({
           agent: ag,
@@ -1163,6 +1189,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         ...part,
         id: part.id ? PartID.make(part.id) : PartID.ascending(),
       })
+      type ResolvePart = (
+        part: PromptInput["parts"][number],
+      ) => Effect.Effect<Draft<MessageV2.Part>[], AttachmentSizeError>
 
       const referenceContextFromFilePart = Effect.fnUntraced(function* (
         part: Extract<PromptInput["parts"][number], { type: "file" }>,
@@ -1188,9 +1217,66 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         })
       })
 
-      const resolvePart: (part: PromptInput["parts"][number]) => Effect.Effect<Draft<MessageV2.Part>[]> = Effect.fn(
-        "SessionPrompt.resolveUserPart",
-      )(function* (part) {
+      const mediaMaxBase64Bytes = Effect.fnUntraced(function* (mime: string) {
+        if (isAudioAttachment(mime))
+          return (yield* config.get()).attachment?.audio?.max_base64_bytes ?? DEFAULT_AUDIO_VIDEO_BASE64_BYTES
+        if (isVideoAttachment(mime))
+          return (yield* config.get()).attachment?.video?.max_base64_bytes ?? DEFAULT_AUDIO_VIDEO_BASE64_BYTES
+        return undefined
+      })
+
+      const mediaValidationMime = (mime: string, urlMime?: string) =>
+        [urlMime, mime]
+          .filter((mime): mime is string => !!mime)
+          .map((mime) => mime.toLowerCase())
+          .find((mime) => {
+            if (isAudioAttachment(mime)) return true
+            return isVideoAttachment(mime)
+          })
+
+      const validateMediaBase64 = Effect.fnUntraced(function* (input: {
+        filename?: string
+        filepath?: string
+        mime: string
+        urlMime?: string
+        base64: string
+      }) {
+        const mime = mediaValidationMime(input.mime, input.urlMime)
+        if (!mime) return
+        const maxBase64Bytes = yield* mediaMaxBase64Bytes(mime)
+        if (maxBase64Bytes === undefined || Buffer.byteLength(input.base64, "utf8") <= maxBase64Bytes) return
+        return yield* new AttachmentSizeError({
+          filename: input.filename ?? input.filepath ?? "attachment",
+          mime,
+          max: maxBase64Bytes,
+        })
+      })
+
+      const shouldUseGeminiFiles = Effect.fnUntraced(function* (mime: string, url: string) {
+        const mediaModel = yield* provider
+          .getModel(info.model.providerID, info.model.modelID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined)))
+        const mediaProvider = yield* provider
+          .getProvider(info.model.providerID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined)))
+        return mediaModel
+          ? ProviderMediaStrategy.resolve(mediaModel, mediaProvider).transport({ mime, url }).type === "gemini-files"
+          : false
+      })
+
+      const validateFilePart = Effect.fnUntraced(function* (part: Extract<MessageV2.Part, { type: "file" }>) {
+        const data = dataUrlInfo(part.url)
+        if (!data) return
+        if (yield* shouldUseGeminiFiles(part.mime, part.url)) return
+        yield* validateMediaBase64({
+          filename: part.filename,
+          mime: part.mime,
+          urlMime: data.mime,
+          base64: data.base64,
+        })
+      })
+
+      const resolvePart: ResolvePart = Effect.fn("SessionPrompt.resolveUserPart")(function* (part) {
         if (part.type === "file") {
           if (part.source?.type === "resource") {
             const { clientName, uri } = part.source
@@ -1247,6 +1333,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           const url = new URL(part.url)
           switch (url.protocol) {
             case "data:":
+              const data = dataUrlInfo(part.url)
+              if (data && !(yield* shouldUseGeminiFiles(part.mime, part.url)))
+                yield* validateMediaBase64({
+                  filename: part.filename,
+                  mime: part.mime,
+                  urlMime: data.mime,
+                  base64: data.base64,
+                })
               if (part.mime === "text/plain") {
                 return [
                   {
@@ -1418,6 +1512,41 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 ]
               }
 
+              const fileURL = pathToFileURL(filepath).href
+              if (yield* shouldUseGeminiFiles(mime, fileURL)) {
+                const filename = part.filename!
+                return [
+                  ...(referenceContext ? [{ ...referenceContext, messageID: info.id, sessionID: input.sessionID }] : []),
+                  {
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: `Called the Read tool with the following input: {"filePath":"${filepath}"}`,
+                  },
+                  {
+                    id: part.id,
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "file",
+                    url: fileURL,
+                    mime,
+                    filename,
+                    source:
+                      part.source ??
+                      {
+                        type: "file",
+                        path: filepath,
+                        text: { value: filename, start: 0, end: filename.length },
+                      },
+                  },
+                ]
+              }
+
+              const bytes = yield* fsys.readFile(filepath).pipe(Effect.catch(Effect.die))
+              const base64 = Buffer.from(bytes).toString("base64")
+              yield* validateMediaBase64({ filename: part.filename, filepath, mime, base64 })
+
               return [
                 ...(referenceContext ? [{ ...referenceContext, messageID: info.id, sessionID: input.sessionID }] : []),
                 {
@@ -1432,9 +1561,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   messageID: info.id,
                   sessionID: input.sessionID,
                   type: "file",
-                  url:
-                    `data:${mime};base64,` +
-                    Buffer.from(yield* fsys.readFile(filepath).pipe(Effect.catch(Effect.die))).toString("base64"),
+                  url: `data:${mime};base64,${base64}`,
                   mime,
                   filename: part.filename!,
                   source: part.source,
@@ -1467,6 +1594,11 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
       const resolvedParts = yield* Effect.forEach(input.parts, resolvePart, { concurrency: "unbounded" }).pipe(
         Effect.map((x) => x.flat().map(assign)),
+      )
+      yield* Effect.forEach(
+        resolvedParts.filter((part): part is Extract<MessageV2.Part, { type: "file" }> => part.type === "file"),
+        validateFilePart,
+        { concurrency: "unbounded" },
       )
 
       yield* plugin.trigger(
@@ -1611,9 +1743,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       return { info, parts }
     }, Effect.scoped)
 
-    const prompt: (input: PromptInput) => Effect.Effect<MessageV2.WithParts, Image.Error> = Effect.fn(
-      "SessionPrompt.prompt",
-    )(function* (input: PromptInput) {
+    type PromptEffect = (input: PromptInput) => Effect.Effect<MessageV2.WithParts, Image.Error | AttachmentSizeError>
+    const prompt: PromptEffect = Effect.fn("SessionPrompt.prompt")(function* (input: PromptInput) {
       const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
       yield* revert.cleanup(session)
       const message = yield* createUserMessage(input)
@@ -1808,12 +1939,16 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
+            const providerInfo = yield* provider.getProvider(model.providerID)
+            const stagedMsgs = yield* Effect.promise(() =>
+              GeminiMediaStaging.stageMessages({ model, provider: providerInfo, messages: msgs }),
+            )
 
             const [skills, env, instructions, modelMsgs] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
-              MessageV2.toModelMessagesEffect(msgs, model),
+              MessageV2.toModelMessagesEffect(stagedMsgs, model),
             ])
             const system = [...env, ...instructions, ...(skills ? [skills] : [])]
             const format = lastUser.format ?? { type: "text" as const }

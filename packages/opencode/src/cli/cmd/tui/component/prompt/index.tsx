@@ -28,7 +28,7 @@ import { MessageID, PartID } from "@/session/schema"
 import { createStore, produce, unwrap } from "solid-js/store"
 import { usePromptHistory, type PromptInfo } from "./history"
 import { computePromptTraits } from "./traits"
-import { assign } from "./part"
+import { assign, isPromptMediaAttachment, promptFilePartLabel } from "./part"
 import { usePromptStash } from "./stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete } from "./autocomplete"
@@ -62,6 +62,7 @@ import { type WorkspaceStatus } from "../workspace-label"
 import { useCommandPalette } from "../../context/command-palette"
 import { useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
 import { useTuiConfig } from "../../context/tui-config"
+import { sniffAttachmentMimeSafe } from "@/util/media"
 
 export type PromptProps = {
   sessionID?: string
@@ -1285,7 +1286,12 @@ export function Prompt(props: PromptProps) {
             return
           }
         }
-        if (mime.startsWith("image/") || mime === "application/pdf") {
+        const detectedMime = await Bun.file(filepath)
+          .slice(0, 4096)
+          .arrayBuffer()
+          .then((buffer) => sniffAttachmentMimeSafe(new Uint8Array(buffer), mime))
+          .catch(() => {})
+        if (detectedMime && isPromptMediaAttachment(detectedMime)) {
           const content = await Filesystem.readArrayBuffer(filepath)
             .then((buffer) => Buffer.from(buffer).toString("base64"))
             .catch(() => {})
@@ -1293,7 +1299,7 @@ export function Prompt(props: PromptProps) {
             await pasteAttachment({
               filename,
               filepath,
-              mime,
+              mime: detectedMime,
               content,
             })
             return
@@ -1323,13 +1329,13 @@ export function Prompt(props: PromptProps) {
   async function pasteAttachment(file: { filename?: string; filepath?: string; content: string; mime: string }) {
     const currentOffset = input.visualCursor.offset
     const extmarkStart = currentOffset
-    const pdf = file.mime === "application/pdf"
+    const label = promptFilePartLabel(file.mime)
+    if (!label) return
     const count = store.prompt.parts.filter((x) => {
       if (x.type !== "file") return false
-      if (pdf) return x.mime === "application/pdf"
-      return x.mime.startsWith("image/")
+      return isPromptMediaAttachment(x.mime) && promptFilePartLabel(x.mime) === label
     }).length
-    const virtualText = pdf ? `[PDF ${count + 1}]` : `[Image ${count + 1}]`
+    const virtualText = `[${label} ${count + 1}]`
     const extmarkEnd = extmarkStart + virtualText.length
     const textToInsert = virtualText + " "
 

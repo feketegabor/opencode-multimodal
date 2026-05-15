@@ -1,4 +1,5 @@
 import type { Prompt } from "@/context/prompt"
+import { normalizePromptParts } from "@/utils/prompt-parts"
 import type { SelectedLineRange } from "@/context/file"
 
 const DEFAULT_PROMPT: Prompt = [{ type: "text", content: "", start: 0, end: 0 }]
@@ -32,15 +33,7 @@ export function canNavigateHistoryAtCursor(direction: "up" | "down", text: strin
 }
 
 export function clonePromptParts(prompt: Prompt): Prompt {
-  return prompt.map((part) => {
-    if (part.type === "text") return { ...part }
-    if (part.type === "image") return { ...part }
-    if (part.type === "agent") return { ...part }
-    return {
-      ...part,
-      selection: part.selection ? { ...part.selection } : undefined,
-    }
-  })
+  return normalizePromptParts(prompt)
 }
 
 function cloneSelection(selection: SelectedLineRange): SelectedLineRange {
@@ -86,9 +79,9 @@ export function prependHistoryEntry(
     .map((part) => ("content" in part ? part.content : ""))
     .join("")
     .trim()
-  const hasImages = prompt.some((part) => part.type === "image")
+  const hasMedia = prompt.some((part) => part.type === "media")
   const hasComments = comments.some((comment) => !!comment.comment.trim())
-  if (!text && !hasImages && !hasComments) return entries
+  if (!text && !hasMedia && !hasComments) return entries
 
   const entry = {
     prompt: clonePromptParts(prompt),
@@ -136,7 +129,7 @@ function isPromptEqual(promptA: PromptHistoryStoredEntry, promptB: PromptHistory
       if (!sameSelection) return false
     }
     if (partA.type === "agent" && partA.name !== (partB.type === "agent" ? partB.name : "")) return false
-    if (partA.type === "image" && partA.id !== (partB.type === "image" ? partB.id : "")) return false
+    if (partA.type === "media" && partA.id !== (partB.type === "media" ? partB.id : "")) return false
   }
   if (entryA.comments.length !== entryB.comments.length) return false
   for (let i = 0; i < entryA.comments.length; i++) {

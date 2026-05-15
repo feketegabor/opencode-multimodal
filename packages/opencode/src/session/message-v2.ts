@@ -17,7 +17,7 @@ import { MessageTable, PartTable, SessionTable } from "./session.sql"
 import * as ProviderError from "@/provider/error"
 import { iife } from "@/util/iife"
 import { errorMessage } from "@/util/error"
-import { isMedia } from "@/util/media"
+import { isAudioAttachment, isMedia, isVideoAttachment } from "@/util/media"
 import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
@@ -641,18 +641,28 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
   // to extract media and inject as user messages. Some SDKs only support a subset
   // of media in tool results; e.g. Bedrock supports images but not PDFs there.
   //
-  // Only apply this workaround if the model actually supports that media input -
-  // otherwise unsupportedParts() will turn it into a user-visible error.
-  const supportsMediaInToolResult = (attachment: { mime: string }) => {
-    if (model.api.npm === "@ai-sdk/anthropic") return true
-    if (model.api.npm === "@ai-sdk/openai") return true
-    if (model.api.npm === "@ai-sdk/amazon-bedrock") return attachment.mime.startsWith("image/")
-    if (model.api.npm === "@ai-sdk/google-vertex/anthropic") return true
-    if (model.api.npm === "@ai-sdk/google") {
-      const id = model.api.id.toLowerCase()
-      return id.includes("gemini-3") && !id.includes("gemini-2")
+  // Only keep media in tool results when the provider serialization path can
+  // emit it as media. Otherwise extract it into a synthetic user message.
+  const supportsMediaInToolResult = (attachment: { mime: string; url?: string }) => {
+    const url = attachment.url
+    const canEmitInline = url?.startsWith("data:") === true && url.includes(",")
+    if (isAudioAttachment(attachment.mime) || isVideoAttachment(attachment.mime)) {
+      return false
     }
-    return false
+    const supported =
+      model.api.npm === "@ai-sdk/anthropic" ||
+      model.api.npm === "@ai-sdk/openai" ||
+      (model.api.npm === "@ai-sdk/amazon-bedrock" && attachment.mime.startsWith("image/")) ||
+      model.api.npm === "@ai-sdk/google-vertex/anthropic" ||
+      (model.api.npm === "@ai-sdk/google" &&
+        model.api.id.toLowerCase().includes("gemini-3") &&
+        !model.api.id.toLowerCase().includes("gemini-2"))
+    if (!supported) return false
+    return canEmitInline
+  }
+  const shouldStripMedia = (mime: string) => {
+    if (!options?.stripMedia) return false
+    return isMedia(mime)
   }
 
   const toModelOutput = (options: { toolCallId: string; input: unknown; output: unknown }) => {
@@ -707,12 +717,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           })
         // text/plain and directory files are converted into text parts, ignore them
         if (part.type === "file" && part.mime !== "text/plain" && part.mime !== "application/x-directory") {
-          if (options?.stripMedia && isMedia(part.mime)) {
-            userMessage.parts.push({
-              type: "text",
-              text: `[Attached ${part.mime}: ${part.filename ?? "file"}]`,
-            })
-          } else {
+          if (!shouldStripMedia(part.mime)) {
             userMessage.parts.push({
               type: "file",
               url: part.url,

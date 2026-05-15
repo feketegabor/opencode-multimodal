@@ -17,9 +17,11 @@ import { pathToFileURL } from "url"
 import { Effect } from "effect"
 import { UI } from "../ui"
 import { effectCmd } from "../effect-cmd"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { ServerAuth } from "@/server/auth"
 import { EOL } from "os"
 import { Filesystem } from "@/util/filesystem"
+import { sniffAttachmentMimeSafe } from "@/util/media"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
 import { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
@@ -56,6 +58,21 @@ type FilePart = {
   url: string
   filename: string
   mime: string
+}
+
+export async function resolveFilePartForRun(resolvedPath: string) {
+  const mime = (await Filesystem.isDir(resolvedPath))
+    ? "application/x-directory"
+    : sniffAttachmentMimeSafe(
+        new Uint8Array(await Bun.file(resolvedPath).slice(0, 4096).arrayBuffer()),
+        AppFileSystem.mimeType(resolvedPath),
+      )
+  return {
+    type: "file" as const,
+    url: pathToFileURL(resolvedPath).href,
+    filename: path.basename(resolvedPath),
+    mime,
+  }
 }
 
 type Inline = {
@@ -314,14 +331,7 @@ export const RunCommand = effectCmd({
             process.exit(1)
           }
 
-          const mime = (await Filesystem.isDir(resolvedPath)) ? "application/x-directory" : "text/plain"
-
-          files.push({
-            type: "file",
-            url: pathToFileURL(resolvedPath).href,
-            filename: path.basename(resolvedPath),
-            mime,
-          })
+          files.push(await resolveFilePartForRun(resolvedPath))
         }
       }
 

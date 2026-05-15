@@ -66,7 +66,7 @@ export function SessionComposerRegion(props: {
       .map((part) => {
         if (part.type === "file") return `[file:${part.path}]`
         if (part.type === "agent") return `@${part.name}`
-        if (part.type === "image") return `[image:${part.filename}]`
+        if (part.type === "media") return `[media:${part.filename}]`
         return part.content
       })
       .join("")

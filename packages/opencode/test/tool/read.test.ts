@@ -557,6 +557,63 @@ root_type Monster;`
   )
 })
 
+describe("tool.read media attachments", () => {
+  it.live("returns audio files as file attachments", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped({ git: true })
+      const file = path.join(dir, "sound.mp3")
+      yield* put(file, Uint8Array.from([0x49, 0x44, 0x33, 0, 0, 0, 0]))
+
+      const result = yield* exec(dir, { filePath: file })
+
+      expect(result.output).toBe("Audio read successfully")
+      expect(result.attachments?.[0]?.mime).toBe("audio/mpeg")
+      expect(result.attachments?.[0]?.url.startsWith("data:audio/mpeg;base64,")).toBe(true)
+    }),
+  )
+
+  it.live("returns audio/mp4 files as file attachments", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped({ git: true })
+      const file = path.join(dir, "sound.m4a")
+      yield* put(file, Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0]))
+
+      const result = yield* exec(dir, { filePath: file })
+
+      expect(result.output).toBe("Audio read successfully")
+      expect(result.attachments?.[0]?.mime).toBe("audio/mp4")
+      expect(result.attachments?.[0]?.url.startsWith("data:audio/mp4;base64,")).toBe(true)
+    }),
+  )
+
+  it.live("returns video files as file attachments", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped({ git: true })
+      const file = path.join(dir, "clip.mp4")
+      yield* put(file, Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0]))
+
+      const result = yield* exec(dir, { filePath: file })
+
+      expect(result.output).toBe("Video read successfully")
+      expect(result.attachments?.[0]?.mime).toBe("video/mp4")
+      expect(result.attachments?.[0]?.url.startsWith("data:video/mp4;base64,")).toBe(true)
+    }),
+  )
+
+  it.live("reads TypeScript files as text instead of video attachments", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped({ git: true })
+      const file = path.join(dir, "example.ts")
+      yield* put(file, "export const value = 1\n")
+
+      const result = yield* exec(dir, { filePath: file })
+
+      expect(result.attachments).toBeUndefined()
+      expect(result.output).toContain("export const value = 1")
+    }),
+  )
+})
+
 describe("tool.read loaded instructions", () => {
   it.live("loads AGENTS.md from parent directory and includes in metadata", () =>
     Effect.gen(function* () {

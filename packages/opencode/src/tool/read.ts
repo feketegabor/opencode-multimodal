@@ -8,7 +8,13 @@ import DESCRIPTION from "./read.txt"
 import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { Instruction } from "../session/instruction"
-import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
+import {
+  isAudioAttachment,
+  isImageAttachment,
+  isPdfAttachment,
+  isVideoAttachment,
+  sniffAttachmentMime,
+} from "@/util/media"
 import { Reference } from "@/reference/reference"
 
 const DEFAULT_READ_LIMIT = 2000
@@ -18,6 +24,15 @@ const MAX_BYTES = 50 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
+const SUPPORTED_AUDIO_MIMES = new Set(["audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "audio/webm"])
+const SUPPORTED_VIDEO_MIMES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo"])
+
+function mediaReadMessage(mime: string) {
+  if (isPdfAttachment(mime)) return "PDF read successfully"
+  if (isAudioAttachment(mime)) return "Audio read successfully"
+  if (isVideoAttachment(mime)) return "Video read successfully"
+  return "Image read successfully"
+}
 
 // `offset` and `limit` were originally `z.coerce.number()` — the runtime
 // coercion was useful when the tool was called from a shell but serves no
@@ -261,11 +276,15 @@ export const ReadTool = Tool.define(
       const sample = yield* readSample(filepath, Number(stat.size), SAMPLE_BYTES)
 
       const mime = sniffAttachmentMime(sample, AppFileSystem.mimeType(filepath))
-      const isImage = SUPPORTED_IMAGE_MIMES.has(mime)
+      const supportedMedia =
+        (isImageAttachment(mime) && SUPPORTED_IMAGE_MIMES.has(mime)) ||
+        isPdfAttachment(mime) ||
+        (isAudioAttachment(mime) && SUPPORTED_AUDIO_MIMES.has(mime)) ||
+        (isVideoAttachment(mime) && SUPPORTED_VIDEO_MIMES.has(mime))
 
-      if (isImage || isPdfAttachment(mime)) {
+      if (supportedMedia) {
         const bytes = yield* fs.readFile(filepath)
-        const msg = isPdfAttachment(mime) ? "PDF read successfully" : "Image read successfully"
+        const msg = mediaReadMessage(mime)
         return {
           title,
           output: msg,

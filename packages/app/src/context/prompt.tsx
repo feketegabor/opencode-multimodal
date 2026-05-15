@@ -5,6 +5,7 @@ import { batch, createMemo, createRoot, getOwner, onCleanup } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
+import { normalizePromptParts, normalizePromptStore } from "@/utils/prompt-parts"
 
 interface PartBase {
   content: string
@@ -27,15 +28,26 @@ export interface AgentPart extends PartBase {
   name: string
 }
 
-export interface ImageAttachmentPart {
-  type: "image"
+export interface MediaAttachmentPart {
+  type: "media"
   id: string
   filename: string
   mime: string
-  dataUrl: string
+  dataUrl?: string
+  previewUrl?: string
+  url?: string
+  source?: {
+    type: "file"
+    path: string
+    text: {
+      value: string
+      start: number
+      end: number
+    }
+  }
 }
 
-export type ContentPart = TextPart | FileAttachmentPart | AgentPart | ImageAttachmentPart
+export type ContentPart = TextPart | FileAttachmentPart | AgentPart | MediaAttachmentPart
 export type Prompt = ContentPart[]
 
 export type FileContextItem = {
@@ -68,8 +80,8 @@ function isPartEqual(partA: ContentPart, partB: ContentPart) {
       return partB.type === "file" && partA.path === partB.path && isSelectionEqual(partA.selection, partB.selection)
     case "agent":
       return partB.type === "agent" && partA.name === partB.name
-    case "image":
-      return partB.type === "image" && partA.id === partB.id
+    case "media":
+      return partB.type === "media" && partA.id === partB.id
   }
 }
 
@@ -81,23 +93,8 @@ export function isPromptEqual(promptA: Prompt, promptB: Prompt): boolean {
   return true
 }
 
-function cloneSelection(selection?: FileSelection) {
-  if (!selection) return undefined
-  return { ...selection }
-}
-
-function clonePart(part: ContentPart): ContentPart {
-  if (part.type === "text") return { ...part }
-  if (part.type === "image") return { ...part }
-  if (part.type === "agent") return { ...part }
-  return {
-    ...part,
-    selection: cloneSelection(part.selection),
-  }
-}
-
 function clonePrompt(prompt: Prompt): Prompt {
-  return prompt.map(clonePart)
+  return normalizePromptParts(prompt)
 }
 
 function contextItemKey(item: ContextItem) {
@@ -165,7 +162,7 @@ function createPromptSession(dir: string, id: string | undefined) {
   const legacy = `${dir}/prompt${id ? "/" + id : ""}.v2`
 
   const [store, setStore, _, ready] = persisted(
-    Persist.scoped(dir, id, "prompt", [legacy]),
+    { ...Persist.scoped(dir, id, "prompt", [legacy]), migrate: normalizePromptStore },
     createStore<{
       prompt: Prompt
       cursor?: number

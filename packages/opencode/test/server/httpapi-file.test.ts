@@ -7,6 +7,7 @@ import { Instance } from "../../src/project/instance"
 import * as Log from "@opencode-ai/core/util/log"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
+import { fileURLToPath } from "url"
 
 void Log.init({ print: false })
 
@@ -22,6 +23,22 @@ function request(route: string, directory: string, query?: Record<string, string
       headers: {
         "x-opencode-directory": directory,
       },
+    }),
+    context,
+  )
+}
+
+function upload(directory: string, body: BodyInit, headers?: Record<string, string>) {
+  return HttpApiApp.webHandler().handler(
+    new Request("http://localhost/file/upload", {
+      method: "POST",
+      headers: {
+        "x-opencode-directory": directory,
+        "x-opencode-filename": "clip.mp4",
+        "content-type": "video/mp4",
+        ...headers,
+      },
+      body,
     }),
     context,
   )
@@ -73,5 +90,95 @@ describe("file HttpApi", () => {
 
     expect(symbols.status).toBe(200)
     expect(await symbols.json()).toEqual([])
+  })
+
+  test("uploads browser media as a server-local file part", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const response = await upload(tmp.path, new Uint8Array([1, 2, 3]))
+
+    expect(response.status).toBe(200)
+    const part = (await response.json()) as {
+      type: string
+      mime: string
+      filename: string
+      url: string
+      source?: { type: string; path: string; text: { value: string; start: number; end: number } }
+    }
+    expect(part).toMatchObject({
+      type: "file",
+      mime: "video/mp4",
+      filename: "clip.mp4",
+      source: {
+        type: "file",
+        text: { value: "clip.mp4", start: 0, end: 8 },
+      },
+    })
+    expect(part.url.startsWith("file://")).toBe(true)
+    expect(await Bun.file(fileURLToPath(part.url)).bytes()).toEqual(new Uint8Array([1, 2, 3]))
+    expect(part.source?.path).toBe(fileURLToPath(part.url))
+  })
+
+  test("uses normalized upload MIME when browser file type is generic", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const response = await upload(tmp.path, new Uint8Array([1, 2, 3]), {
+      "content-type": "application/octet-stream",
+      "x-opencode-mime": "video/mp4",
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      type: "file",
+      mime: "video/mp4",
+      filename: "clip.mp4",
+    })
+  })
+
+  test("rejects oversized browser media uploads before persistence", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const response = await upload(tmp.path, new Uint8Array([1]), {
+      "content-length": String(101 * 1024 * 1024),
+    })
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({
+      error: "Upload exceeds maximum size of 104857600 bytes",
+      maxBytes: 104857600,
+    })
+  })
+
+  test("rejects oversized browser media uploads while streaming unknown-length bodies", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    let remaining = 101
+    const response = await upload(
+      tmp.path,
+      new ReadableStream({
+        pull(controller) {
+          if (remaining === 0) return controller.close()
+          remaining--
+          controller.enqueue(new Uint8Array(1024 * 1024))
+        },
+      }),
+    )
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({
+      error: "Upload exceeds maximum size of 104857600 bytes",
+      maxBytes: 104857600,
+    })
+  })
+
+  test("rejects non-attachment MIME types for browser uploads", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const response = await upload(tmp.path, new Uint8Array([1]), {
+      "content-type": "application/octet-stream",
+    })
+
+    expect(response.status).toBe(415)
+    expect(await response.json()).toEqual({ error: "Unsupported upload MIME type: application/octet-stream" })
   })
 })

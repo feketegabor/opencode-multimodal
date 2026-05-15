@@ -1,9 +1,9 @@
-import type { Event } from "@opencode-ai/sdk/v2/client"
+import type { Event, FilePartInput } from "@opencode-ai/sdk/v2/client"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { batch, onCleanup, onMount } from "solid-js"
-import { createSdkForServer } from "@/utils/server"
+import { authTokenFromCredentials, createSdkForServer } from "@/utils/server"
 import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
@@ -248,6 +248,38 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           fetch: platform.fetch,
           ...opts,
         })
+      },
+      async uploadAttachment(input: { directory?: string; file: File; mime?: string }): Promise<FilePartInput> {
+        const s = server.current
+        if (!s) throw new Error(language.t("error.globalSDK.serverNotAvailable"))
+        const url = new URL("/file/upload", s.http.url)
+        if (input.directory) url.searchParams.set("directory", input.directory)
+        const response = await (platform.fetch ?? fetch)(url, {
+          method: "POST",
+          headers: {
+            "content-type": input.mime || input.file.type || "application/octet-stream",
+            ...(input.mime ? { "x-opencode-mime": input.mime } : {}),
+            "x-opencode-filename": encodeURIComponent(input.file.name),
+            ...(s.http.password
+              ? {
+                  Authorization: `Basic ${authTokenFromCredentials({
+                    username: s.http.username,
+                    password: s.http.password,
+                  })}`,
+                }
+              : {}),
+          },
+          body: input.file,
+        })
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => undefined)) as unknown
+          const message =
+            payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+              ? payload.error
+              : undefined
+          throw new Error(message ? `${message} (HTTP ${response.status})` : `Attachment upload failed with HTTP ${response.status}`)
+        }
+        return (await response.json()) as FilePartInput
       },
     }
   },

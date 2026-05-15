@@ -1,14 +1,34 @@
-import { ACCEPTED_FILE_TYPES, ACCEPTED_IMAGE_TYPES } from "@/constants/file-picker"
+import {
+  ACCEPTED_AUDIO_TYPES,
+  ACCEPTED_FILE_TYPES,
+  ACCEPTED_IMAGE_TYPES,
+  ACCEPTED_VIDEO_TYPES,
+} from "@/constants/file-picker"
 
 export { ACCEPTED_FILE_TYPES }
 
 const IMAGE_MIMES = new Set(ACCEPTED_IMAGE_TYPES)
+const AUDIO_MIMES = new Set(ACCEPTED_AUDIO_TYPES)
+const VIDEO_MIMES = new Set(ACCEPTED_VIDEO_TYPES)
 const IMAGE_EXTS = new Map([
   ["gif", "image/gif"],
   ["jpeg", "image/jpeg"],
   ["jpg", "image/jpeg"],
   ["png", "image/png"],
   ["webp", "image/webp"],
+])
+const AUDIO_EXTS = new Map([
+  ["m4a", "audio/mp4"],
+  ["mp3", "audio/mpeg"],
+  ["ogg", "audio/ogg"],
+  ["wav", "audio/wav"],
+  ["webm", "audio/webm"],
+])
+const VIDEO_EXTS = new Map([
+  ["avi", "video/x-msvideo"],
+  ["mov", "video/quicktime"],
+  ["mp4", "video/mp4"],
+  ["webm", "video/webm"],
 ])
 const TEXT_MIMES = new Set([
   "application/json",
@@ -53,10 +73,16 @@ function textBytes(bytes: Uint8Array) {
 export async function attachmentMime(file: File) {
   const type = kind(file.type)
   if (IMAGE_MIMES.has(type)) return type
+  if (AUDIO_MIMES.has(type)) return type
+  if (VIDEO_MIMES.has(type)) return type
   if (type === "application/pdf") return type
 
   const suffix = ext(file.name)
-  const fallback = IMAGE_EXTS.get(suffix) ?? (suffix === "pdf" ? "application/pdf" : undefined)
+  const fallback =
+    IMAGE_EXTS.get(suffix) ??
+    AUDIO_EXTS.get(suffix) ??
+    VIDEO_EXTS.get(suffix) ??
+    (suffix === "pdf" ? "application/pdf" : undefined)
   if ((!type || type === "application/octet-stream") && fallback) return fallback
 
   if (textMime(type)) return "text/plain"

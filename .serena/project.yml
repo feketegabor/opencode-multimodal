@@ -1,0 +1,71 @@
+# the name by which the project can be referenced within Serena
+project_name: "opencode-multimodal-multimodal-input"
+
+# list of languages for which language servers are started
+languages:
+- typescript
+- markdown
+- powershell
+- bash
+- yaml
+- toml
+- json
+- html
+- scss
+
+# the encoding used by text files in the project
+encoding: "utf-8"
+
+# line ending convention to use when writing source files.
+# Possible values: unset, "lf", "crlf", or "native".
+line_ending:
+
+# The language backend to use for this project.
+# Valid values: LSP, JetBrains
+language_backend:
+
+# whether to use project's .gitignore files to ignore files
+ignore_all_files_in_gitignore: true
+
+# advanced language-server-specific options
+ls_specific_settings: {}
+
+# list of additional paths to ignore in this project
+ignored_paths: []
+
+# whether the project is in read-only mode
+read_only: false
+
+# list of Serena tool names to exclude
+excluded_tools:
+- check_onboarding_performed
+- delete_memory
+- edit_memory
+- get_current_config
+- list_memories
+- onboarding
+- open_dashboard
+- read_memory
+- rename_memory
+- write_memory
+
+# list of optional tools to include that would otherwise be disabled
+included_optional_tools: []
+
+# initial prompt for the project
+initial_prompt: ""
+project_name_placeholder: ""
+
+# default modes for this project
+default_modes:
+- interactive
+- editing
+- no-memories
+- no-onboarding
+
+read_only_memory_patterns: []
+ignored_memories: []
+fixed_tools: []
+base_modes:
+symbol_info_budget:
+ignored_memory_patterns: []

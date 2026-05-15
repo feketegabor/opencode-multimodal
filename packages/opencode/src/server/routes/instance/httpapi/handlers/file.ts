@@ -1,9 +1,51 @@
 import * as InstanceState from "@/effect/instance-state"
 import { File } from "@/file"
 import { Ripgrep } from "@/file/ripgrep"
+import { Global } from "@opencode-ai/core/global"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { randomUUID } from "crypto"
+import { stat } from "fs/promises"
 import { Effect } from "effect"
+import path from "path"
+import { pathToFileURL } from "url"
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
+import { FilePaths } from "../groups/file"
+import { WorkspaceRouteContext } from "../middleware/workspace-routing"
+
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
+const uploadLimitError = `Upload exceeds maximum size of ${MAX_UPLOAD_BYTES} bytes`
+
+function headerValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0]
+  return value
+}
+
+function filename(request: HttpServerRequest.HttpServerRequest) {
+  const raw = headerValue(request.headers["x-opencode-filename"]) ?? "attachment"
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(raw)
+    } catch {
+      return raw
+    }
+  })()
+  return decoded.replace(/\0/g, "").split(/[\\/]/).filter(Boolean).at(-1)?.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_") || "attachment"
+}
+
+function mime(request: HttpServerRequest.HttpServerRequest) {
+  return (
+    headerValue(request.headers["x-opencode-mime"]) ||
+    headerValue(request.headers["content-type"])?.split(";")[0]?.trim() ||
+    "application/octet-stream"
+  )
+}
+
+function supportedUploadMime(value: string) {
+  return value.startsWith("image/") || value.startsWith("audio/") || value.startsWith("video/") || value === "application/pdf"
+}
 
 export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handlers) =>
   Effect.gen(function* () {
@@ -50,5 +92,99 @@ export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handl
       .handle("list", list)
       .handle("content", content)
       .handle("status", status)
+  }),
+)
+
+export const fileUploadRoute = HttpRouter.use((router) =>
+  Effect.gen(function* () {
+    const fs = yield* AppFileSystem.Service
+    yield* router.add(
+      "POST",
+      FilePaths.upload,
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        yield* WorkspaceRouteContext
+        const name = filename(request)
+        const contentType = mime(request)
+        if (!supportedUploadMime(contentType)) {
+          return HttpServerResponse.jsonUnsafe({ error: `Unsupported upload MIME type: ${contentType}` }, { status: 415 })
+        }
+        const declaredSize = Number(headerValue(request.headers["content-length"]) ?? "0")
+        if (Number.isFinite(declaredSize) && declaredSize > MAX_UPLOAD_BYTES) {
+          return HttpServerResponse.jsonUnsafe({ error: uploadLimitError, maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
+        }
+
+        const uploadDir = path.join(Global.Path.data, "uploads")
+        yield* fs
+          .readDirectoryEntries(uploadDir)
+          .pipe(
+            Effect.flatMap((entries) =>
+              Effect.all(
+                entries
+                  .filter((entry) => entry.type === "file")
+                  .map((entry) =>
+                    Effect.tryPromise(() => stat(path.join(uploadDir, entry.name))).pipe(
+                      Effect.flatMap((info) =>
+                        Date.now() - info.mtimeMs > UPLOAD_TTL_MS
+                          ? fs.remove(path.join(uploadDir, entry.name), { force: true })
+                          : Effect.void,
+                      ),
+                      Effect.ignore,
+                    ),
+                  ),
+                { concurrency: 4 },
+              ),
+            ),
+            Effect.ignore,
+          )
+        const sourceBody = (request.source as { body?: ReadableStream<Uint8Array> | null }).body
+        const upload = sourceBody
+          ? yield* Effect.promise(() =>
+              (async () => {
+                const reader = sourceBody.getReader()
+                const chunks: Uint8Array[] = []
+                let uploadedBytes = 0
+                while (true) {
+                  const chunk = await reader.read()
+                  if (chunk.done) break
+                  const nextBytes = uploadedBytes + chunk.value.byteLength
+                  if (nextBytes > MAX_UPLOAD_BYTES) throw new Error(uploadLimitError)
+                  chunks.push(chunk.value)
+                  uploadedBytes = nextBytes
+                }
+                const bytes = new Uint8Array(uploadedBytes)
+                let offset = 0
+                chunks.forEach((chunk) => {
+                  bytes.set(chunk, offset)
+                  offset += chunk.byteLength
+                })
+                return bytes
+              })()
+                .then((bytes) => ({ ok: true as const, bytes }))
+                .catch(() => ({ ok: false as const })),
+            )
+          : { ok: true as const, bytes: new Uint8Array(yield* Effect.orDie(request.arrayBuffer)) }
+        if (!upload.ok) {
+          return HttpServerResponse.jsonUnsafe({ error: uploadLimitError, maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
+        }
+        const bytes = upload.bytes
+        if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+          return HttpServerResponse.jsonUnsafe({ error: uploadLimitError, maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
+        }
+        const filepath = path.join(uploadDir, `${randomUUID()}-${name}`)
+        yield* fs.writeWithDirs(filepath, bytes)
+        return HttpServerResponse.jsonUnsafe({
+          type: "file",
+          mime: contentType,
+          filename: name,
+          url: pathToFileURL(filepath).href,
+          source: {
+            type: "file",
+            path: filepath,
+            text: { value: name, start: 0, end: name.length },
+          },
+        })
+      }),
+    )
   }),
 )

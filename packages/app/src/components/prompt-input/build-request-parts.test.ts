@@ -20,8 +20,8 @@ describe("buildRequestParts", () => {
     const result = buildRequestParts({
       prompt,
       context: [{ key: "ctx:1", type: "file", path: "src/bar.ts", comment: "check this" }],
-      images: [
-        { type: "image", id: "img_1", filename: "a.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" },
+      media: [
+        { type: "media", id: "media_1", filename: "a.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" },
       ],
       text: "hello @src/foo.ts @planner",
       messageID: "msg_1",
@@ -49,15 +49,15 @@ describe("buildRequestParts", () => {
     expect(result.optimisticParts.every((part) => part.sessionID === "ses_1" && part.messageID === "msg_1")).toBe(true)
   })
 
-  test("keeps multiple uploaded attachments in order", () => {
+  test("keeps multiple uploaded media attachments in order", () => {
     const result = buildRequestParts({
       prompt: [{ type: "text", content: "check these", start: 0, end: 11 }],
       context: [],
-      images: [
-        { type: "image", id: "img_1", filename: "a.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" },
+      media: [
+        { type: "media", id: "media_1", filename: "a.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" },
         {
-          type: "image",
-          id: "img_2",
+          type: "media",
+          id: "media_2",
           filename: "b.pdf",
           mime: "application/pdf",
           dataUrl: "data:application/pdf;base64,BBB",
@@ -75,6 +75,79 @@ describe("buildRequestParts", () => {
     expect(files.map((part) => (part.type === "file" ? part.filename : ""))).toEqual(["a.png", "b.pdf"])
   })
 
+  test("keeps uploaded audio and video media attachments in order", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "check media", start: 0, end: 11 }],
+      context: [],
+      media: [
+        {
+          type: "media",
+          id: "media_1",
+          filename: "voice.mp3",
+          mime: "audio/mpeg",
+          dataUrl: "data:audio/mpeg;base64,AAA",
+        },
+        {
+          type: "media",
+          id: "media_2",
+          filename: "clip.mp4",
+          mime: "video/mp4",
+          dataUrl: "data:video/mp4;base64,BBB",
+        },
+      ],
+      text: "check media",
+      messageID: "msg_media",
+      sessionID: "ses_media",
+      sessionDirectory: "/repo",
+    })
+
+    const files = result.requestParts.filter((part) => part.type === "file" && part.url.startsWith("data:"))
+
+    expect(files.map((part) => (part.type === "file" ? [part.filename, part.mime, part.url] : []))).toEqual([
+      ["voice.mp3", "audio/mpeg", "data:audio/mpeg;base64,AAA"],
+      ["clip.mp4", "video/mp4", "data:video/mp4;base64,BBB"],
+    ])
+  })
+
+  test("submits uploaded media by server file URL instead of preview data URL", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "check upload", start: 0, end: 12 }],
+      context: [],
+      media: [
+        {
+          type: "media",
+          id: "media_uploaded",
+          filename: "clip.mp4",
+          mime: "video/mp4",
+          dataUrl: "data:video/mp4;base64,PREVIEW",
+          url: "file:///C:/Users/feket/AppData/Local/opencode/uploads/clip.mp4",
+          source: {
+            type: "file",
+            path: "C:\\Users\\feket\\AppData\\Local\\opencode\\uploads\\clip.mp4",
+            text: { value: "clip.mp4", start: 0, end: 8 },
+          },
+        },
+      ],
+      text: "check upload",
+      messageID: "msg_uploaded",
+      sessionID: "ses_uploaded",
+      sessionDirectory: "C:\\repo",
+    })
+
+    expect(result.requestParts.at(-1)).toEqual({
+      id: expect.any(String),
+      type: "file",
+      mime: "video/mp4",
+      url: "file:///C:/Users/feket/AppData/Local/opencode/uploads/clip.mp4",
+      filename: "clip.mp4",
+      source: {
+        type: "file",
+        path: "C:\\Users\\feket\\AppData\\Local\\opencode\\uploads\\clip.mp4",
+        text: { value: "clip.mp4", start: 0, end: 8 },
+      },
+    })
+  })
+
   test("deduplicates context files when prompt already includes same path", () => {
     const prompt: Prompt = [{ type: "file", path: "src/foo.ts", content: "@src/foo.ts", start: 0, end: 11 }]
 
@@ -84,7 +157,7 @@ describe("buildRequestParts", () => {
         { key: "ctx:dup", type: "file", path: "src/foo.ts" },
         { key: "ctx:comment", type: "file", path: "src/foo.ts", comment: "focus here" },
       ],
-      images: [],
+      media: [],
       text: "@src/foo.ts",
       messageID: "msg_2",
       sessionID: "ses_2",
@@ -111,7 +184,7 @@ describe("buildRequestParts", () => {
           comment: "Compare with @src/shared.ts and @src/review.ts.",
         },
       ],
-      images: [],
+      media: [],
       text: "look",
       messageID: "msg_comment_mentions",
       sessionID: "ses_comment_mentions",
@@ -130,7 +203,7 @@ describe("buildRequestParts", () => {
     const result = buildRequestParts({
       prompt,
       context: [],
-      images: [],
+      media: [],
       text: "@src\\foo.ts",
       messageID: "msg_win_1",
       sessionID: "ses_win_1",
@@ -156,7 +229,7 @@ describe("buildRequestParts", () => {
     const result = buildRequestParts({
       prompt,
       context: [],
-      images: [],
+      media: [],
       text: "@file#name.txt",
       messageID: "msg_win_2",
       sessionID: "ses_win_2",
@@ -181,7 +254,7 @@ describe("buildRequestParts", () => {
     const result = buildRequestParts({
       prompt,
       context: [],
-      images: [],
+      media: [],
       text: "@src/app.ts",
       messageID: "msg_linux_1",
       sessionID: "ses_linux_1",
@@ -204,7 +277,7 @@ describe("buildRequestParts", () => {
     const result = buildRequestParts({
       prompt,
       context: [],
-      images: [],
+      media: [],
       text: "@README.md",
       messageID: "msg_mac_1",
       sessionID: "ses_mac_1",
@@ -230,7 +303,7 @@ describe("buildRequestParts", () => {
         { key: "ctx:1", type: "file", path: "src\\utils\\helper.ts" },
         { key: "ctx:2", type: "file", path: "test\\unit.test.ts", comment: "check tests" },
       ],
-      images: [],
+      media: [],
       text: "test",
       messageID: "msg_win_ctx",
       sessionID: "ses_win_ctx",
@@ -257,7 +330,7 @@ describe("buildRequestParts", () => {
     const result = buildRequestParts({
       prompt,
       context: [],
-      images: [],
+      media: [],
       text: "@D:\\other\\project\\file.ts",
       messageID: "msg_abs",
       sessionID: "ses_abs",
@@ -288,7 +361,7 @@ describe("buildRequestParts", () => {
     const result = buildRequestParts({
       prompt,
       context: [],
-      images: [],
+      media: [],
       text: "@src\\App.tsx",
       messageID: "msg_sel",
       sessionID: "ses_sel",
@@ -317,7 +390,7 @@ describe("buildRequestParts", () => {
     const result = buildRequestParts({
       prompt,
       context: [],
-      images: [],
+      media: [],
       text: "@..\\..\\shared\\util.ts",
       messageID: "msg_dots",
       sessionID: "ses_dots",

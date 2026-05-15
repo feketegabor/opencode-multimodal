@@ -20,12 +20,15 @@ const storedSessions: Record<string, Array<{ id: string; title?: string }>> = {}
 const promoted: Array<{ directory: string; sessionID: string }> = []
 const sentShell: string[] = []
 const syncedDirectories: string[] = []
+const promptRequests: Array<{ parts: Array<{ type: string; filename?: string; mime?: string; url?: string }> }> = []
+const commandRequests: Array<{ parts: Array<{ type: string; filename?: string; mime?: string; url?: string }> }> = []
+let commandList: Array<{ name: string }> = []
 
 let params: { id?: string } = {}
 let selected = "/repo/worktree-a"
 let variant: string | undefined
 
-const promptValue: Prompt = [{ type: "text", content: "ls", start: 0, end: 2 }]
+let promptValue: Prompt = [{ type: "text", content: "ls", start: 0, end: 2 }]
 
 const clientFor = (directory: string) => {
   createdClients.push(directory)
@@ -45,8 +48,14 @@ const clientFor = (directory: string) => {
         return { data: undefined }
       },
       prompt: async () => ({ data: undefined }),
-      promptAsync: async () => ({ data: undefined }),
-      command: async () => ({ data: undefined }),
+      promptAsync: async (input: { parts: Array<{ type: string; filename?: string; mime?: string; url?: string }> }) => {
+        promptRequests.push(input)
+        return { data: undefined }
+      },
+      command: async (input: { parts: Array<{ type: string; filename?: string; mime?: string; url?: string }> }) => {
+        commandRequests.push(input)
+        return { data: undefined }
+      },
       abort: async () => ({ data: undefined }),
     },
     worktree: {
@@ -140,7 +149,7 @@ beforeAll(async () => {
 
   mock.module("@/context/sync", () => ({
     useSync: () => ({
-      data: { command: [] },
+      data: { command: commandList },
       session: {
         optimistic: {
           add: (value: {
@@ -211,6 +220,10 @@ beforeEach(() => {
   params = {}
   sentShell.length = 0
   syncedDirectories.length = 0
+  promptRequests.length = 0
+  commandRequests.length = 0
+  commandList = []
+  promptValue = [{ type: "text", content: "ls", start: 0, end: 2 }]
   selected = "/repo/worktree-a"
   variant = undefined
   for (const key of Object.keys(storedSessions)) delete storedSessions[key]
@@ -220,7 +233,7 @@ describe("prompt submit worktree selection", () => {
   test("reads the latest worktree accessor value per submit", async () => {
     const submit = createPromptSubmit({
       info: () => undefined,
-      imageAttachments: () => [],
+      mediaAttachments: () => [],
       commentCount: () => 0,
       autoAccept: () => false,
       mode: () => "shell",
@@ -257,7 +270,7 @@ describe("prompt submit worktree selection", () => {
   test("applies auto-accept to newly created sessions", async () => {
     const submit = createPromptSubmit({
       info: () => undefined,
-      imageAttachments: () => [],
+      mediaAttachments: () => [],
       commentCount: () => 0,
       autoAccept: () => true,
       mode: () => "shell",
@@ -287,7 +300,7 @@ describe("prompt submit worktree selection", () => {
 
     const submit = createPromptSubmit({
       info: () => ({ id: "session-1" }),
-      imageAttachments: () => [],
+      mediaAttachments: () => [],
       commentCount: () => 0,
       autoAccept: () => false,
       mode: () => "normal",
@@ -318,7 +331,7 @@ describe("prompt submit worktree selection", () => {
   test("seeds new sessions before optimistic prompts are added", async () => {
     const submit = createPromptSubmit({
       info: () => undefined,
-      imageAttachments: () => [],
+      mediaAttachments: () => [],
       commentCount: () => 0,
       autoAccept: () => false,
       mode: () => "normal",
@@ -341,5 +354,96 @@ describe("prompt submit worktree selection", () => {
 
     expect(storedSessions["/repo/worktree-a"]).toEqual([{ id: "session-1", title: "New session 1" }])
     expect(optimisticSeeded).toEqual([true])
+  })
+
+  test("forwards media attachments into normal prompt requests", async () => {
+    params = { id: "session-1" }
+    promptValue = [
+      { type: "text", content: "describe", start: 0, end: 8 },
+      {
+        type: "media",
+        id: "media_audio",
+        filename: "voice.mp3",
+        mime: "audio/mpeg",
+        dataUrl: "data:audio/mpeg;base64,AAA",
+        url: "file:///C:/opencode/uploads/voice.mp3",
+      },
+    ]
+
+    const submit = createPromptSubmit({
+      info: () => ({ id: "session-1" }),
+      mediaAttachments: () => promptValue.filter((part) => part.type === "media"),
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    await submit.handleSubmit(new Event("submit"))
+    await Promise.resolve()
+
+    expect(promptRequests).toHaveLength(1)
+    expect(promptRequests[0]?.parts).toContainEqual(
+      expect.objectContaining({
+        type: "file",
+        filename: "voice.mp3",
+        mime: "audio/mpeg",
+        url: "file:///C:/opencode/uploads/voice.mp3",
+      }),
+    )
+  })
+
+  test("forwards uploaded media file URLs into slash command requests", async () => {
+    params = { id: "session-1" }
+    commandList = [{ name: "review" }]
+    promptValue = [
+      { type: "text", content: "/review", start: 0, end: 7 },
+      {
+        type: "media",
+        id: "media_video",
+        filename: "clip.mp4",
+        mime: "video/mp4",
+        dataUrl: "data:video/mp4;base64,PREVIEW",
+        url: "file:///C:/opencode/uploads/clip.mp4",
+      },
+    ]
+
+    const submit = createPromptSubmit({
+      info: () => ({ id: "session-1" }),
+      mediaAttachments: () => promptValue.filter((part) => part.type === "media"),
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    await submit.handleSubmit(new Event("submit"))
+    await Promise.resolve()
+
+    expect(commandRequests).toHaveLength(1)
+    expect(commandRequests[0]?.parts).toContainEqual(
+      expect.objectContaining({
+        type: "file",
+        filename: "clip.mp4",
+        mime: "video/mp4",
+        url: "file:///C:/opencode/uploads/clip.mp4",
+      }),
+    )
   })
 })

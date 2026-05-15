@@ -10,7 +10,7 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { usePermission } from "@/context/permission"
-import { type ContextItem, type ImageAttachmentPart, type Prompt, usePrompt } from "@/context/prompt"
+import { type ContextItem, type MediaAttachmentPart, type Prompt, usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { Identifier } from "@/utils/id"
@@ -48,11 +48,11 @@ type FollowupSendInput = {
 
 const draftText = (prompt: Prompt) => prompt.map((part) => ("content" in part ? part.content : "")).join("")
 
-const draftImages = (prompt: Prompt) => prompt.filter((part): part is ImageAttachmentPart => part.type === "image")
+const draftMedia = (prompt: Prompt) => prompt.filter((part): part is MediaAttachmentPart => part.type === "media")
 
 export async function sendFollowupDraft(input: FollowupSendInput) {
   const text = draftText(input.draft.prompt)
-  const images = draftImages(input.draft.prompt)
+  const media = draftMedia(input.draft.prompt)
   const [, setStore] = input.globalSync.child(input.draft.sessionDirectory)
 
   const setBusy = () => {
@@ -88,13 +88,14 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
         agent: input.draft.agent,
         model: `${input.draft.model.providerID}/${input.draft.model.modelID}`,
         variant: input.draft.variant,
-        parts: images.map((attachment) => ({
-          id: Identifier.ascending("part"),
-          type: "file" as const,
-          mime: attachment.mime,
-          url: attachment.dataUrl,
-          filename: attachment.filename,
-        })),
+        parts: media.map((attachment) => ({
+        id: Identifier.ascending("part"),
+        type: "file" as const,
+        mime: attachment.mime,
+        url: attachment.url ?? attachment.dataUrl ?? "",
+        filename: attachment.filename,
+        source: attachment.source,
+      })),
       })
       return true
     } catch (err) {
@@ -107,7 +108,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
   const { requestParts, optimisticParts } = buildRequestParts({
     prompt: input.draft.prompt,
     context: input.draft.context,
-    images,
+    media,
     text,
     sessionID: input.draft.sessionID,
     messageID,
@@ -172,7 +173,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
 
 type PromptSubmitInput = {
   info: Accessor<{ id: string } | undefined>
-  imageAttachments: Accessor<ImageAttachmentPart[]>
+  mediaAttachments: Accessor<MediaAttachmentPart[]>
   commentCount: Accessor<number>
   autoAccept: Accessor<boolean>
   mode: Accessor<"normal" | "shell">
@@ -291,10 +292,10 @@ export function createPromptSubmit(input: PromptSubmitInput) {
 
     const currentPrompt = prompt.current()
     const text = currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
-    const images = input.imageAttachments().slice()
+    const media = input.mediaAttachments().slice()
     const mode = input.mode()
 
-    if (text.trim().length === 0 && images.length === 0 && input.commentCount() === 0) {
+    if (text.trim().length === 0 && media.length === 0 && input.commentCount() === 0) {
       if (input.working()) void abort()
       return
     }
@@ -466,12 +467,13 @@ export function createPromptSubmit(input: PromptSubmitInput) {
             agent,
             model: `${model.providerID}/${model.modelID}`,
             variant,
-            parts: images.map((attachment) => ({
+            parts: media.map((attachment) => ({
               id: Identifier.ascending("part"),
               type: "file" as const,
               mime: attachment.mime,
-              url: attachment.dataUrl,
+              url: attachment.url ?? attachment.dataUrl ?? "",
               filename: attachment.filename,
+              source: attachment.source,
             })),
           })
           .catch((err) => {

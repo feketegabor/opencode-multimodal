@@ -1,7 +1,12 @@
 import type { FilePart } from "@opencode-ai/sdk/v2"
 
 export function attached(part: FilePart) {
-  return part.url.startsWith("data:")
+  return (
+    part.url.startsWith("data:") ||
+    part.mime.startsWith("image/") ||
+    part.mime.startsWith("audio/") ||
+    part.mime.startsWith("video/")
+  )
 }
 
 export function inline(part: FilePart) {
