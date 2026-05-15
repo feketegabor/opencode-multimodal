@@ -1482,7 +1482,7 @@ Record the implemented, partially covered, and unproven surfaces in the design s
 
 2026-05-15 result: added `Current Implementation Status` to the design spec with implemented coverage, remaining gaps, and merge readiness criteria.
 
-- [ ] **Step 2: Clean PR history against upstream**
+- [x] **Step 2: Clean PR history against upstream**
 
 Refresh from `upstream/dev` and rebuild the PR so it contains only multimodal implementation commits, not upstream catch-up commits.
 
@@ -1495,6 +1495,8 @@ git diff --stat upstream/dev...HEAD
 ```
 
 Expected: upstream-only commits are not present in the PR side, and the changed files match the multimodal feature scope plus project-local docs/config that the user approved.
+
+2026-05-15 result: fetched `upstream/dev` at `f80715272`, rebased the feature branch onto it, resolved current upstream conflicts, and dropped obsolete commit `36f935cad` because upstream's new event handler now preserves request context with `Effect.context()` and `Stream.provideContext(context)`. `git rev-list --left-right --count upstream/dev...HEAD` now reports `0 17`, and `git log --left-right --cherry-pick upstream/dev...HEAD --right-only` shows only multimodal/docs commits.
 
 - [ ] **Step 3: Verify shared web UI in Chrome**
 
@@ -1548,13 +1550,13 @@ Make one explicit design choice before adding more code:
 
 Current recommendation: reject oversized inline-only media for this PR, document the error path, and treat automatic chunking/transcoding as a follow-up design.
 
-- [ ] **Step 8: Run final verification**
+- [x] **Step 8: Run final verification**
 
 Run from package directories only:
 
 ```bash
 cd packages/opencode
-bun test test/provider/media-staging.test.ts test/provider/media-strategy.test.ts test/server/httpapi-file.test.ts test/session/message-v2.test.ts test/tool/read.test.ts test/util/media.test.ts test/cli/run/file-attachment.test.ts test/cli/cmd/tui/prompt-part.test.ts
+bun test --timeout 30000 test/provider/media-staging.test.ts test/provider/media-strategy.test.ts test/server/httpapi-file.test.ts test/session/message-v2.test.ts test/tool/read.test.ts test/util/media.test.ts test/cli/run/file-attachment.test.ts test/cli/cmd/tui/prompt-part.test.ts
 bun test --timeout 30000 test/session/prompt.test.ts -t "resolves audio file URLs|resolves video file URLs|keeps Google local video file URLs|resolves OAuth-style Google local video file URLs|allows large Google data video URLs|rejects oversized audio and video attachments"
 bun typecheck
 
@@ -1567,6 +1569,15 @@ bun typecheck
 ```
 
 Expected: all commands pass. If broad prompt lifecycle tests still require a longer timeout, record that separately and do not conflate it with media test failure.
+
+2026-05-15 result after upstream rebase:
+
+- `packages/opencode`: focused media/server/CLI/TUI suite passed with `--timeout 30000` (`125 pass, 0 fail`). The explicit timeout is required on Windows because the shared instance cleanup hook can exceed Bun's 5s default after raw HTTP API tests.
+- `packages/opencode`: focused prompt media tests passed (`6 pass, 0 fail`).
+- `packages/opencode`: `bun typecheck` passed.
+- `packages/app`: prompt attachment/request tests passed (`26 pass, 0 fail`) and `bun typecheck` passed.
+- `packages/ui`: `message-file` attachment rendering tests passed (`4 pass, 0 fail`) and `bun typecheck` passed.
+- `packages/sdk/js`: `bun typecheck` passed.
 
 - [ ] **Step 9: Run external review before readying PR**
 

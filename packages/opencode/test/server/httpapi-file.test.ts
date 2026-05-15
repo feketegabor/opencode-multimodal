@@ -29,7 +29,7 @@ function request(route: string, directory: string, query?: Record<string, string
 }
 
 function upload(directory: string, body: BodyInit, headers?: Record<string, string>) {
-  return ExperimentalHttpApiServer.webHandler().handler(
+  return HttpApiApp.webHandler().handler(
     new Request("http://localhost/file/upload", {
       method: "POST",
       headers: {
