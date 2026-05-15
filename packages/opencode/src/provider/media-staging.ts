@@ -233,6 +233,26 @@ async function stageFilePart(input: Options, part: MessageV2.FilePart) {
   return { ...part, url: aiSDKFileURI({ provider: input.provider, upload: uploaded }) }
 }
 
+async function stageToolPartAttachments(input: Options, part: MessageV2.ToolPart) {
+  if (part.state.status !== "completed" || !part.state.attachments?.length) return part
+  let changed = false
+  const attachments = await Promise.all(
+    part.state.attachments.map(async (attachment) => {
+      const staged = await stageFilePart(input, attachment)
+      if (staged !== attachment) changed = true
+      return staged
+    }),
+  )
+  if (!changed) return part
+  return {
+    ...part,
+    state: {
+      ...part.state,
+      attachments,
+    },
+  }
+}
+
 export async function upload(input: UploadInput): Promise<UploadResult> {
   const fetcher = input.fetch ?? fetch
   const media = await mediaBody(input)
@@ -281,13 +301,17 @@ export async function stageMessages(input: Options) {
     input.messages.map(async (message) => {
       const parts = await Promise.all(
         message.parts.map(async (part) => {
-          if (part.type !== "file") return part
-          const staged = await stageFilePart(input, part)
+          const staged =
+            part.type === "file"
+              ? await stageFilePart(input, part)
+              : part.type === "tool"
+              ? await stageToolPartAttachments(input, part)
+              : part
           if (staged !== part) changed = true
           return staged
         }),
       )
-      return parts === message.parts ? message : { ...message, parts }
+      return parts.some((part, index) => part !== message.parts[index]) ? { ...message, parts } : message
     }),
   )
 

@@ -40,9 +40,8 @@ function scheme(url: string): Scheme | undefined {
 
 export function resolve(model: Provider.Model, provider?: Provider.Info): Strategy {
   const customGoogle = model.api.npm === "@ai-sdk/google" && customGoogleTransport(provider)
-  const accepted = new Set(
-    (["audio", "image", "pdf", "text", "video"] as const).filter((item) => model.capabilities.input[item]),
-  )
+  const input = model.capabilities.input ?? {}
+  const accepted = new Set((["audio", "image", "pdf", "text", "video"] as const).filter((item) => input[item]))
   const schemes = new Set<Scheme>(
     customGoogle
       ? ["data", "file"]
@@ -50,8 +49,8 @@ export function resolve(model: Provider.Model, provider?: Provider.Info): Strate
       ? ["data", "file", "https", "youtube"]
       : ["data", "file", "http", "https"],
   )
-  const videoAudio = model.capabilities.input.video
-    ? model.capabilities.input.audio
+  const videoAudio = input.video
+    ? input.audio
       ? "preserved"
       : "visual-only"
     : "unknown"
@@ -70,6 +69,10 @@ export function resolve(model: Provider.Model, provider?: Provider.Info): Strate
       if (customGoogle && !schemes.has(inputScheme))
         return { type: "reject", reason: "Custom Google transports only support inline file data" }
       if (!schemes.has(inputScheme)) return { type: "reject", reason: `Model does not support ${inputScheme} media URLs` }
+
+      if (model.api.npm === "@ai-sdk/openai-compatible" && inputModality === "video") {
+        return { type: "reject", reason: "@ai-sdk/openai-compatible does not support video file parts" }
+      }
 
       if (
         model.api.npm === "@ai-sdk/google" &&

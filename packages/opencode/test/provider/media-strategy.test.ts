@@ -44,7 +44,7 @@ function model(override: Partial<Provider.Model> = {}): Provider.Model {
 }
 
 describe("ProviderMediaStrategy.resolve", () => {
-  test("allows metadata-backed inline audio and video for opencode-go openai-compatible models", () => {
+  test("allows metadata-backed inline audio but rejects video for openai-compatible transports", () => {
     const strategy = ProviderMediaStrategy.resolve(model())
 
     expect(strategy.accepted.has("audio")).toBe(true)
@@ -54,7 +54,8 @@ describe("ProviderMediaStrategy.resolve", () => {
       type: "inline",
     })
     expect(strategy.transport({ mime: "video/mp4", url: "data:video/mp4;base64,Zm9v" })).toStrictEqual({
-      type: "inline",
+      type: "reject",
+      reason: "@ai-sdk/openai-compatible does not support video file parts",
     })
   })
 
@@ -241,10 +242,9 @@ describe("ProviderMediaStrategy.resolve", () => {
     expect(strategy.transport({ mime: "image/png", url: "file:///tmp/image.png" })).toStrictEqual({ type: "inline" })
   })
 
-  test("uses URL transport for accepted HTTP and HTTPS URLs", () => {
+  test("uses URL transport for accepted HTTP and HTTPS audio URLs", () => {
     const strategy = ProviderMediaStrategy.resolve(model())
 
     expect(strategy.transport({ mime: "audio/mpeg", url: "http://example.com/audio.mp3" })).toStrictEqual({ type: "url" })
-    expect(strategy.transport({ mime: "video/mp4", url: "https://example.com/video.mp4" })).toStrictEqual({ type: "url" })
   })
 })

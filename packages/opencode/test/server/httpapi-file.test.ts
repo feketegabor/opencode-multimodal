@@ -149,6 +149,28 @@ describe("file HttpApi", () => {
     })
   })
 
+  test("rejects oversized browser media uploads while streaming unknown-length bodies", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    let remaining = 101
+    const response = await upload(
+      tmp.path,
+      new ReadableStream({
+        pull(controller) {
+          if (remaining === 0) return controller.close()
+          remaining--
+          controller.enqueue(new Uint8Array(1024 * 1024))
+        },
+      }),
+    )
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({
+      error: "Upload exceeds maximum size of 104857600 bytes",
+      maxBytes: 104857600,
+    })
+  })
+
   test("rejects non-attachment MIME types for browser uploads", async () => {
     await using tmp = await tmpdir({ git: true })
 

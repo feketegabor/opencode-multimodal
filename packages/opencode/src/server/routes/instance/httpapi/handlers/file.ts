@@ -137,8 +137,37 @@ export const fileUploadRoute = HttpRouter.use((router) =>
             ),
             Effect.ignore,
           )
-
-        const bytes = new Uint8Array(yield* Effect.orDie(request.arrayBuffer))
+        const sourceBody = (request.source as { body?: ReadableStream<Uint8Array> | null }).body
+        const upload = sourceBody
+          ? yield* Effect.promise(() =>
+              (async () => {
+                const reader = sourceBody.getReader()
+                const chunks: Uint8Array[] = []
+                let uploadedBytes = 0
+                while (true) {
+                  const chunk = await reader.read()
+                  if (chunk.done) break
+                  const nextBytes = uploadedBytes + chunk.value.byteLength
+                  if (nextBytes > MAX_UPLOAD_BYTES) throw new Error(uploadLimitError)
+                  chunks.push(chunk.value)
+                  uploadedBytes = nextBytes
+                }
+                const bytes = new Uint8Array(uploadedBytes)
+                let offset = 0
+                chunks.forEach((chunk) => {
+                  bytes.set(chunk, offset)
+                  offset += chunk.byteLength
+                })
+                return bytes
+              })()
+                .then((bytes) => ({ ok: true as const, bytes }))
+                .catch(() => ({ ok: false as const })),
+            )
+          : { ok: true as const, bytes: new Uint8Array(yield* Effect.orDie(request.arrayBuffer)) }
+        if (!upload.ok) {
+          return HttpServerResponse.jsonUnsafe({ error: uploadLimitError, maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
+        }
+        const bytes = upload.bytes
         if (bytes.byteLength > MAX_UPLOAD_BYTES) {
           return HttpServerResponse.jsonUnsafe({ error: uploadLimitError, maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
         }

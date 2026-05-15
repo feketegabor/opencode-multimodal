@@ -488,7 +488,7 @@ const baseModel = {
 } as any
 
 describe("ProviderMediaStrategy.resolve", () => {
-  test("allows metadata-backed inline audio and video for OpenCode Go candidates", () => {
+  test("allows metadata-backed inline audio but rejects OpenAI-compatible video transport", () => {
     const strategy = ProviderMediaStrategy.resolve(baseModel)
 
     expect(strategy.accepted.audio).toBe(true)
@@ -498,7 +498,7 @@ describe("ProviderMediaStrategy.resolve", () => {
       "inline",
     )
     expect(strategy.transport({ mime: "video/mp4", bytes: 1024, url: "data:video/mp4;base64,AAA" }).type).toBe(
-      "inline",
+      "reject",
     )
   })
 
@@ -1548,6 +1548,8 @@ Run or explicitly defer protected live tests for:
 
 Do not request new credentials until the exact next experiment is ready. Use existing env/auth where available and redact all request/response artifacts.
 
+2026-05-15 result: the live OpenCode Go `mimo-v2.5` MP4 attempt proved the metadata claim is not enough for current transport support. OpenCode Go advertises MiMo v2.5 as audio+video and Kimi/Qwen candidates as video-capable, but those paths currently go through `@ai-sdk/openai-compatible` or `@ai-sdk/anthropic`; the installed `@ai-sdk/openai-compatible` serializer rejects `video/mp4` file parts before the request can reach OpenCode Go. This branch now rejects OpenAI-compatible video explicitly through `ProviderMediaStrategy` and `ProviderTransform` instead of letting the AI SDK fail late. MiMo audio remains metadata-backed inline candidate behavior; OpenCode Go/Kimi/Qwen video is not claimed until a custom provider serializer or upstream AI SDK support exists and passes live tests. Gemini API-key MP4 through Files API is Chrome/CLI live-verified; Gemini YouTube URL is unit-verified through AI SDK serialization and still needs a protected live call before final provider-matrix closure. OAuth/Antigravity Gemini remains inline-only with explicit size gates and no Files API claim.
+
 - [x] **Step 7: Decide large-file UX**
 
 Make one explicit design choice before adding more code:
@@ -1589,15 +1591,24 @@ Expected: all commands pass. If broad prompt lifecycle tests still require a lon
 - `packages/ui`: `message-file` attachment rendering tests passed (`4 pass, 0 fail`) and `bun typecheck` passed.
 - `packages/sdk/js`: `bun typecheck` passed.
 
+2026-05-15 review-fix verification:
+
+- `packages/opencode`: `bun test --timeout 30000 test/provider/media-staging.test.ts test/provider/media-strategy.test.ts test/tool/read.test.ts test/server/httpapi-file.test.ts` passed (`76 pass, 0 fail`).
+- `packages/opencode`: `bun test --timeout 30000 test/provider/transform.test.ts` passed (`228 pass, 0 fail`).
+- `packages/opencode`: `bun typecheck` passed.
+- Fixes covered: tool-result media now participates in Gemini staging; OpenAI-compatible video is rejected before AI SDK serialization; slash-command media size errors are no longer converted to defects by `Effect.orDie`; raw upload bodies are capped while streaming unknown-length requests; `read` treats `audio/mp4`/M4A as a media attachment.
+
 - [ ] **Step 9: Run external review before readying PR**
 
 Before marking the PR ready:
 
 - Run a local code review with `claude -p` using Opus 4.7 / max reasoning if available.
-- Spawn a clean-context GPT-5.5 extra-high subagent review using the Superpowers code-review skill.
+- [x] Spawn a clean-context GPT-5.5 extra-high subagent review using the Superpowers code-review skill.
 - If feasible, request a GitHub Copilot PR review agent.
 
 Each review prompt must include the design goal, implemented scope, known gaps, live-test evidence, and the explicit non-claims around OAuth/Antigravity/OpenCode Go until live tests pass.
+
+2026-05-15 subagent review result: clean-context GPT-5.5 extra-high review found four issues. Confirmed and fixed in this pass: tool-result media staging gap, slash-command attachment error propagation, streaming upload limit enforcement, and `audio/mp4` read-tool support. Remaining external reviews before marking PR ready: Claude review and optional GitHub Copilot PR review.
 
 ## Self-Review Notes
 

@@ -24,7 +24,7 @@ const MAX_BYTES = 50 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
-const SUPPORTED_AUDIO_MIMES = new Set(["audio/mpeg", "audio/wav", "audio/ogg", "audio/webm"])
+const SUPPORTED_AUDIO_MIMES = new Set(["audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "audio/webm"])
 const SUPPORTED_VIDEO_MIMES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo"])
 
 function mediaReadMessage(mime: string) {

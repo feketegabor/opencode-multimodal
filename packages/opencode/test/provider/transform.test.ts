@@ -1457,6 +1457,27 @@ describe("ProviderTransform.message - media transport strategy", () => {
     })
   })
 
+  test("rejects openai-compatible video before AI SDK serialization", () => {
+    const result = ProviderTransform.message(
+      [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "describe" },
+            { type: "file", mediaType: "video/mp4", filename: "clip.mp4", data: "data:video/mp4;base64,AAA" },
+          ],
+        },
+      ],
+      model(),
+      {},
+    )
+
+    expect(result[0].content[1]).toEqual({
+      type: "text",
+      text: 'ERROR: Cannot read "clip.mp4" (@ai-sdk/openai-compatible does not support video file parts). Inform the user.',
+    })
+  })
+
   test("rejects audio for visual-only video models", () => {
     const result = ProviderTransform.message(
       [

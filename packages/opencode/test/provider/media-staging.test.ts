@@ -113,6 +113,60 @@ function userWithSourceLessFile(url: string): MessageV2.WithParts {
   return message
 }
 
+function assistantWithToolAttachment(url: string, sourcePath = "C:\\media\\tool-clip.mp4"): MessageV2.WithParts {
+  return {
+    info: {
+      id: "assistant",
+      sessionID: "session",
+      role: "assistant",
+      system: [],
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      modelID: ModelID.make("gemini-3.1-flash-lite"),
+      providerID: ProviderID.make("google"),
+      agent: "build",
+      mode: "build",
+      parentID: "user",
+      path: { cwd: ".", root: "." },
+      time: { created: 0 },
+    } as unknown as MessageV2.Assistant,
+    parts: [
+      {
+        id: "tool",
+        messageID: "assistant",
+        sessionID: "session",
+        type: "tool",
+        callID: "call",
+        tool: "read",
+        state: {
+          status: "completed",
+          input: { filePath: sourcePath },
+          output: "Video read successfully",
+          time: { start: 0, end: 1 },
+          attachments: [
+            {
+              id: "attachment",
+              messageID: "assistant",
+              sessionID: "session",
+              type: "file",
+              mime: "video/mp4",
+              filename: "tool-clip.mp4",
+              url,
+              source: url.startsWith("file:")
+                ? {
+                    type: "file",
+                    path: sourcePath,
+                    text: { value: "tool-clip.mp4", start: 0, end: 13 },
+                  }
+                : undefined,
+            },
+          ],
+        },
+      },
+    ] as unknown as MessageV2.Part[],
+  }
+}
+
 async function googleParts(fileURL: string) {
   const requests: Array<{ url: string; body: string }> = []
   const google = createGoogleGenerativeAI({
@@ -196,6 +250,42 @@ describe("GeminiMediaStaging.stageMessages", () => {
       "https://generativelanguage.googleapis.com/v1beta/files/video-123",
     )
     expect((messages[0].parts[0] as MessageV2.FilePart).url).toBe("file:///C:/media/clip.mp4")
+  })
+
+  test("uploads Google media emitted by tool results before model serialization", async () => {
+    const uploads: GeminiMediaStaging.UploadInput[] = []
+    const messages = [assistantWithToolAttachment("file:///C:/media/tool-clip.mp4")]
+
+    const result = await GeminiMediaStaging.stageMessages({
+      model: googleModel,
+      provider,
+      messages,
+      upload: async (input) => {
+        uploads.push(input)
+        return {
+          uri: "https://generativelanguage.googleapis.com/v1beta/files/tool-video-123",
+          name: "files/tool-video-123",
+          expiresAt: Date.now() + 60_000,
+        }
+      },
+    })
+
+    const part = result[0].parts[0] as MessageV2.ToolPart
+    const original = messages[0].parts[0] as MessageV2.ToolPart
+    expect(uploads).toHaveLength(1)
+    expect(uploads[0]).toMatchObject({
+      mime: "video/mp4",
+      filename: "tool-clip.mp4",
+      url: "file:///C:/media/tool-clip.mp4",
+      sourcePath: "C:\\media\\tool-clip.mp4",
+    })
+    expect(part.state.status).toBe("completed")
+    if (part.state.status === "completed") {
+      expect(part.state.attachments?.[0]?.url).toBe("https://generativelanguage.googleapis.com/v1beta/files/tool-video-123")
+    }
+    if (original.state.status === "completed") {
+      expect(original.state.attachments?.[0]?.url).toBe("file:///C:/media/tool-clip.mp4")
+    }
   })
 
   test("passes Google YouTube URLs through without upload", async () => {

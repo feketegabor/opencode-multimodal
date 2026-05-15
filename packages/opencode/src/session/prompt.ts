@@ -196,7 +196,7 @@ export interface Interface {
   readonly prompt: (input: PromptInput) => Effect.Effect<MessageV2.WithParts, Image.Error | AttachmentSizeError>
   readonly loop: (input: LoopInput) => Effect.Effect<MessageV2.WithParts>
   readonly shell: (input: ShellInput) => Effect.Effect<MessageV2.WithParts, Session.BusyError>
-  readonly command: (input: CommandInput) => Effect.Effect<MessageV2.WithParts, Image.Error>
+  readonly command: (input: CommandInput) => Effect.Effect<MessageV2.WithParts, Image.Error | AttachmentSizeError>
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
 }
 
@@ -2129,7 +2129,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         agent: userAgent,
         parts,
         variant: input.variant,
-      }).pipe(Effect.orDie)
+      })
       yield* bus.publish(Command.Event.Executed, {
         name: input.command,
         sessionID: input.sessionID,

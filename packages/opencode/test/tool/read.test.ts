@@ -572,6 +572,20 @@ describe("tool.read media attachments", () => {
     }),
   )
 
+  it.live("returns audio/mp4 files as file attachments", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped({ git: true })
+      const file = path.join(dir, "sound.m4a")
+      yield* put(file, Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0]))
+
+      const result = yield* exec(dir, { filePath: file })
+
+      expect(result.output).toBe("Audio read successfully")
+      expect(result.attachments?.[0]?.mime).toBe("audio/mp4")
+      expect(result.attachments?.[0]?.url.startsWith("data:audio/mp4;base64,")).toBe(true)
+    }),
+  )
+
   it.live("returns video files as file attachments", () =>
     Effect.gen(function* () {
       const dir = yield* tmpdirScoped({ git: true })

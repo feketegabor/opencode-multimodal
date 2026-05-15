@@ -351,12 +351,13 @@ This section records the implementation state after the first multimodal branch 
 
 - Shared `packages/app` prompt UI now accepts image, PDF, audio, and video files through the common browser/desktop attachment path.
 - Browser and desktop shared UI uploads selected media through `/file/upload`, receives a server-local `file://` part, keeps only object URLs for local preview, and submits the returned file part through the existing prompt API.
-- The server upload route stores media under the OpenCode user data directory, rejects unsupported MIME types, rejects uploads above the configured route limit before persistence when possible, and returns canonical `FilePartInput` metadata.
+- The server upload route stores media under the OpenCode user data directory, rejects unsupported MIME types, rejects uploads above the configured route limit before persistence when `content-length` is known, caps unknown-length bodies while streaming, and returns canonical `FilePartInput` metadata.
 - CLI `opencode run --file` now sniffs media MIME from file bytes instead of forcing every file to `text/plain`, while preserving directory behavior and avoiding ambiguous TypeScript-as-video misclassification.
 - TUI path-paste handling recognizes image, PDF, audio, and video files, renders stable media labels such as `Image`, `PDF`, `Audio`, and `Video`, and continues to use file parts rather than a separate media schema.
-- The read tool can return image, PDF, audio, and video attachments for supported media files.
+- The read tool can return image, PDF, audio, `audio/mp4`/M4A, and video attachments for supported media files.
 - `MessageV2.toModelMessagesEffect` converts audio/video user file parts into AI SDK file content and strips or extracts media consistently when compaction/tool-result handling requires it.
-- Provider strategy and Gemini staging code distinguish model capability from transport capability. Google API-key media can be staged through Gemini Files API; Gemini YouTube URLs pass through as URL-backed file parts; custom/OAuth-style Google transports stay inline with explicit size checks.
+- Provider strategy and Gemini staging code distinguish model capability from transport capability. Google API-key user media and extracted tool-result media can be staged through Gemini Files API; Gemini YouTube URLs pass through as URL-backed file parts; custom/OAuth-style Google transports stay inline with explicit size checks.
+- OpenAI-compatible video is explicitly rejected before AI SDK serialization because the currently installed `@ai-sdk/openai-compatible` provider does not serialize `video/mp4` file parts. OpenCode Go MiMo/Kimi/Qwen video is therefore not a supported transport claim in this branch despite positive model metadata.
 - Focused tests cover shared app attachment upload, request-part building, server upload, CLI MIME detection, TUI media labels, media read tool behavior, message conversion, provider strategy, Gemini Files staging, YouTube request shape, and audio/video prompt resolution.
 - Chrome E2E has verified the local shared web app with a real uploaded MP4 and Gemini 3.1 Flash Lite. The composer and timeline preserved the `video/mp4` attachment, Gemini answered semantically about the video, the backend stored the browser upload under the OpenCode user data upload directory, and Gemini Files API listed the uploaded `ui-real-clip.mp4` as ACTIVE with a `v1beta/files/...` URI.
 
@@ -367,7 +368,7 @@ This section records the implementation state after the first multimodal branch 
 - CLI is covered for MIME detection and core prompt flow, but provider-limit and oversize behavior should be documented in user-facing errors for non-Gemini inline-only providers.
 - ACP, MCP resource, SDK-only clients, and plugins can submit `FilePartInput` values, but they do not get the shared upload UI or preflight UX. They should be considered API-compatible rather than UX-complete.
 - Gemini API-key path is the best-proven provider path. Gemini OAuth / Antigravity-style providers intentionally do not use Gemini Files API and still need live inline-size and request-shape testing.
-- OpenCode Go, MiMo v2.5, Kimi K2.5/K2.6, Qwen Plus visual-video, and any audio/video OpenAI-compatible path still require protected live provider tests before the branch can claim provider-specific support.
+- OpenCode Go MiMo audio remains a metadata-backed inline candidate, but OpenCode Go MiMo/Kimi/Qwen video is currently blocked by AI SDK transport support and is rejected clearly. Kimi K2.5/K2.6 and Qwen Plus visual-video require either a custom provider serializer or upstream AI SDK support plus protected live tests before the branch can claim provider-specific video support.
 - Large local media is not automatically chunked or transcoded. Current behavior is stage through Gemini Files API where the strategy supports it, keep inline only within configured limits for inline-only transports, or reject clearly. Automatic chunking remains a separate design decision.
 
 ### Merge Readiness Criteria
