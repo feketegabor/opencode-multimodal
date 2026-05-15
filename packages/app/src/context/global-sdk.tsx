@@ -271,7 +271,14 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           },
           body: input.file,
         })
-        if (!response.ok) throw new Error(`Attachment upload failed with HTTP ${response.status}`)
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => undefined)) as unknown
+          const message =
+            payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+              ? payload.error
+              : undefined
+          throw new Error(message ? `${message} (HTTP ${response.status})` : `Attachment upload failed with HTTP ${response.status}`)
+        }
         return (await response.json()) as FilePartInput
       },
     }

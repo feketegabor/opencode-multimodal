@@ -143,6 +143,10 @@ describe("file HttpApi", () => {
     })
 
     expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({
+      error: "Upload exceeds maximum size of 104857600 bytes",
+      maxBytes: 104857600,
+    })
   })
 
   test("rejects non-attachment MIME types for browser uploads", async () => {
@@ -153,5 +157,6 @@ describe("file HttpApi", () => {
     })
 
     expect(response.status).toBe(415)
+    expect(await response.json()).toEqual({ error: "Unsupported upload MIME type: application/octet-stream" })
   })
 })

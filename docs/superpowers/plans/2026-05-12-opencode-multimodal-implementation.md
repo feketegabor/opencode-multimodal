@@ -1540,7 +1540,7 @@ Run or explicitly defer protected live tests for:
 
 Do not request new credentials until the exact next experiment is ready. Use existing env/auth where available and redact all request/response artifacts.
 
-- [ ] **Step 7: Decide large-file UX**
+- [x] **Step 7: Decide large-file UX**
 
 Make one explicit design choice before adding more code:
 
@@ -1549,6 +1549,8 @@ Make one explicit design choice before adding more code:
 - Add provider-specific chunking only for known OAuth/custom endpoints.
 
 Current recommendation: reject oversized inline-only media for this PR, document the error path, and treat automatic chunking/transcoding as a follow-up design.
+
+2026-05-15 result: confirmed this PR keeps the conservative behavior. Gemini API-key staging may use Gemini Files API for local/data media within OpenCode's upload route limits; inline-only transports reject oversized media before model calls; browser uploads reject files over the raw upload route limit with a structured 413 response. Automatic chunking/transcoding remains out of scope.
 
 - [x] **Step 8: Run final verification**
 

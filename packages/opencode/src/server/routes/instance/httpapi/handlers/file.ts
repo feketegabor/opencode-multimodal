@@ -16,6 +16,7 @@ import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
+const uploadLimitError = `Upload exceeds maximum size of ${MAX_UPLOAD_BYTES} bytes`
 
 function headerValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) return value[0]
@@ -106,11 +107,11 @@ export const fileUploadRoute = HttpRouter.use((router) =>
         const name = filename(request)
         const contentType = mime(request)
         if (!supportedUploadMime(contentType)) {
-          return HttpServerResponse.jsonUnsafe({ error: "Unsupported upload MIME type" }, { status: 415 })
+          return HttpServerResponse.jsonUnsafe({ error: `Unsupported upload MIME type: ${contentType}` }, { status: 415 })
         }
         const declaredSize = Number(headerValue(request.headers["content-length"]) ?? "0")
         if (Number.isFinite(declaredSize) && declaredSize > MAX_UPLOAD_BYTES) {
-          return HttpServerResponse.jsonUnsafe({ error: "Upload exceeds maximum size" }, { status: 413 })
+          return HttpServerResponse.jsonUnsafe({ error: uploadLimitError, maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
         }
 
         const uploadDir = path.join(Global.Path.data, "uploads")
@@ -139,7 +140,7 @@ export const fileUploadRoute = HttpRouter.use((router) =>
 
         const bytes = new Uint8Array(yield* Effect.orDie(request.arrayBuffer))
         if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-          return HttpServerResponse.jsonUnsafe({ error: "Upload exceeds maximum size" }, { status: 413 })
+          return HttpServerResponse.jsonUnsafe({ error: uploadLimitError, maxBytes: MAX_UPLOAD_BYTES }, { status: 413 })
         }
         const filepath = path.join(uploadDir, `${randomUUID()}-${name}`)
         yield* fs.writeWithDirs(filepath, bytes)
