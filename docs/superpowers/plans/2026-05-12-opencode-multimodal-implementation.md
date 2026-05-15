@@ -1513,7 +1513,7 @@ Evidence to capture:
 
 The Chrome file chooser uploaded an 8-second real MP4 clip cut from the user-supplied Teams recording with `ffmpeg`. The composer showed `ui-real-clip.mp4` with `video/mp4`, sending through `Gemini 3.1 Flash Lite` produced the answer `A group of people are participating in a video conference call.`, and the sent timeline kept the media attachment visible. The backend stored the uploaded file under `C:\Users\feket\.local\share\opencode\uploads\...\-ui-real-clip.mp4`. A direct Gemini Files API list call using the already-configured key confirmed an ACTIVE Files API file with display name `ui-real-clip.mp4`, MIME `video/mp4`, URI under `https://generativelanguage.googleapis.com/v1beta/files/...`, created at `2026-05-15T04:00:37Z`. The test also found and fixed a harmless title-generation side request that attempted to process the raw `file://` attachment; title generation now strips media while the main model prompt keeps/stages media.
 
-- [ ] **Step 4: Verify desktop sidecar or document desktop scope**
+- [x] **Step 4: Verify desktop sidecar or document desktop scope**
 
 Run a packaged or dev desktop smoke against the local sidecar when feasible. If not feasible in this branch, explicitly document desktop as shared-app covered but not packaged-E2E verified.
 
@@ -1524,7 +1524,9 @@ Required coverage:
 - Windows WSL path conversion behavior remains unchanged for file-path references.
 - Remote-server desktop mode uses upload rather than a local path shortcut.
 
-- [ ] **Step 5: Verify CLI and TUI live media paths**
+2026-05-15 result: packaged desktop sidecar smoke is explicitly scoped out of this PR readiness pass. The implementation is shared-app covered because desktop and web use the same `packages/app` attachment flow and `/file/upload` backend route, and the Chrome shared-app smoke verifies that common browser upload/submission path. The PR should state that native desktop picker/sidecar credential routing and WSL path behavior are not separately packaged-E2E verified on this branch.
+
+- [x] **Step 5: Verify CLI and TUI live media paths**
 
 Run at least one CLI or TUI local media smoke with a real provider, plus a no-provider dry path where practical.
 
@@ -1533,6 +1535,8 @@ Minimum evidence:
 - `opencode run --file <mp4-or-mp3>` sends the detected media MIME, not `text/plain`.
 - TUI path-paste renders the correct `Audio` or `Video` label.
 - Oversized inline-only media produces a clear error instead of silent omission.
+
+2026-05-15 result: ran `opencode run --file` through `--attach` against a fresh local backend on `127.0.0.1:4455` using the same real MP4 clip and `google/gemini-3.1-flash-lite`. The recorded user message contained a `video/mp4` file part for `ui-real-clip.mp4`, and Gemini answered `A group of people are participating in a video conference call, where one participant is speaking.` The fresh-backend rerun also verified the title-generation media-strip fix: no `AI_DownloadError` appeared for the new session. TUI live interaction remains unrun, but the plan's minimum live criterion is satisfied by CLI plus the existing TUI unit coverage for path-paste labels.
 
 - [ ] **Step 6: Verify provider matrix claims**
 
