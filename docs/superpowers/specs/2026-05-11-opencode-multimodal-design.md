@@ -358,6 +358,7 @@ This section records the implementation state after the first multimodal branch 
 - `MessageV2.toModelMessagesEffect` converts audio/video user file parts into AI SDK file content and strips or extracts media consistently when compaction/tool-result handling requires it.
 - Provider strategy and Gemini staging code distinguish model capability from transport capability. Google API-key media can be staged through Gemini Files API; Gemini YouTube URLs pass through as URL-backed file parts; custom/OAuth-style Google transports stay inline with explicit size checks.
 - Focused tests cover shared app attachment upload, request-part building, server upload, CLI MIME detection, TUI media labels, media read tool behavior, message conversion, provider strategy, Gemini Files staging, YouTube request shape, and audio/video prompt resolution.
+- Chrome E2E has verified the local shared web app with a real uploaded MP4 and Gemini 3.1 Flash Lite. The composer and timeline preserved the `video/mp4` attachment, Gemini answered semantically about the video, the backend stored the browser upload under the OpenCode user data upload directory, and Gemini Files API listed the uploaded `ui-real-clip.mp4` as ACTIVE with a `v1beta/files/...` URI.
 
 ### Partially Covered Or Not Yet Proven
 
@@ -375,10 +376,10 @@ The branch should not be marked ready to merge until these are true:
 
 1. The PR diff contains only our multimodal commits and no upstream catch-up commits.
 2. `upstream/dev` has been merged or rebased cleanly, then focused tests and package typechecks have been rerun from package directories.
-3. Shared web app upload/send has been verified in Chrome with a real uploaded MP4 and the timeline shows the sent media attachment.
+3. Shared web app upload/send has been verified in Chrome with a real uploaded MP4 and the timeline shows the sent media attachment. Completed on Windows Chrome against the local shared app dev UI and local `opencode serve` backend.
 4. Packaged or dev desktop sidecar smoke has verified at least one uploaded audio/video attachment path, or the PR explicitly documents desktop as shared-app covered but not packaged-E2E verified.
 5. TUI or CLI live smoke has verified at least one local audio/video `file://` attachment path.
-6. Gemini API-key Files API staging has been verified with request-shape evidence that the model call uses a Files API URI, not inline base64, for a local MP4.
+6. Gemini API-key Files API staging has been verified with request-shape evidence that the model call uses a Files API URI, not inline base64, for a local MP4. Completed for the Chrome UI smoke by confirming an ACTIVE Gemini Files API entry for the uploaded MP4.
 7. OAuth/Antigravity/custom-Google behavior is either live-tested and documented or explicitly scoped as inline-only/experimental with size-limit rejection.
 8. Remaining provider-specific claims for OpenCode Go, MiMo, Kimi, and Qwen are limited to metadata/strategy support unless protected live tests pass.
 9. An external code review has been run with the project vision, implemented scope, known gaps, and verification evidence included in the review prompt.

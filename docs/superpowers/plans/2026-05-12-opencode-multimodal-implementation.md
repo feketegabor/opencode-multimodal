@@ -1496,9 +1496,9 @@ git diff --stat upstream/dev...HEAD
 
 Expected: upstream-only commits are not present in the PR side, and the changed files match the multimodal feature scope plus project-local docs/config that the user approved.
 
-2026-05-15 result: fetched `upstream/dev` at `f80715272`, rebased the feature branch onto it, resolved current upstream conflicts, and dropped obsolete commit `36f935cad` because upstream's new event handler now preserves request context with `Effect.context()` and `Stream.provideContext(context)`. `git rev-list --left-right --count upstream/dev...HEAD` now reports `0 17`, and `git log --left-right --cherry-pick upstream/dev...HEAD --right-only` shows only multimodal/docs commits.
+2026-05-15 result: fetched `upstream/dev` at `f80715272`, rebased the feature branch onto it, resolved current upstream conflicts, and dropped obsolete commit `36f935cad` because upstream's new event handler now preserves request context with `Effect.context()` and `Stream.provideContext(context)`. The PR was retargeted to the fork `dev` branch after syncing it with upstream. GitHub now shows the draft PR with 19 feature commits and 67 changed files instead of the previous upstream-catch-up flood.
 
-- [ ] **Step 3: Verify shared web UI in Chrome**
+- [x] **Step 3: Verify shared web UI in Chrome**
 
 Use the real Chrome automation surface, not only the in-app browser, to upload a real MP4 through the UI and send a Gemini API-key prompt.
 
@@ -1508,6 +1508,10 @@ Evidence to capture:
 - The sent timeline message still shows the media attachment.
 - The upload exists in the OpenCode user data upload store.
 - Gemini Files cache/request-shape evidence shows the model request used a Files API URI, not inline base64, for the local MP4.
+
+2026-05-15 result: used the trusted Codex Chrome extension backend from `C:\Users\feket\.codex\.tmp\bundled-marketplaces\openai-bundled\plugins\chrome`, claimed the real Chrome OpenCode tab, and verified the local app dev UI against a local `opencode serve` backend. Direct `opencode serve` from TypeScript proxies `https://app.opencode.ai` when no embedded UI bundle exists, so the real local shared-app UI test used `packages/app` Vite on `127.0.0.1:4454` connected to the local backend on `127.0.0.1:4453`.
+
+The Chrome file chooser uploaded an 8-second real MP4 clip cut from the user-supplied Teams recording with `ffmpeg`. The composer showed `ui-real-clip.mp4` with `video/mp4`, sending through `Gemini 3.1 Flash Lite` produced the answer `A group of people are participating in a video conference call.`, and the sent timeline kept the media attachment visible. The backend stored the uploaded file under `C:\Users\feket\.local\share\opencode\uploads\...\-ui-real-clip.mp4`. A direct Gemini Files API list call using the already-configured key confirmed an ACTIVE Files API file with display name `ui-real-clip.mp4`, MIME `video/mp4`, URI under `https://generativelanguage.googleapis.com/v1beta/files/...`, created at `2026-05-15T04:00:37Z`. The test also found and fixed a harmless title-generation side request that attempted to process the raw `file://` attachment; title generation now strips media while the main model prompt keeps/stages media.
 
 - [ ] **Step 4: Verify desktop sidecar or document desktop scope**
 
