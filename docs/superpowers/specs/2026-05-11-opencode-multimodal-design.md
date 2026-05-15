@@ -49,7 +49,7 @@ Current `models.dev` data for `opencode-go` marks:
 - `mimo-v2.5-pro` as text input only.
 - `kimi-k2.5`, `kimi-k2.6`, `qwen3.5-plus`, and `qwen3.6-plus` as text, image, and video input, but not audio input.
 
-The OpenCode Go docs list these same model IDs and document Kimi/MiMo through OpenAI-compatible chat completions and Qwen through Alibaba chat completions. Current `models.dev` metadata for `opencode-go/qwen3.x-plus` instead reports an Anthropic-compatible provider route. Treat that as a route discrepancy to verify against the upstream code and endpoint before implementation. OpenCode Go public `/models` currently returns model IDs without rich modality metadata, so Go media support still needs contract tests and protected live experiments before enabling claims for specific Go models.
+The OpenCode Go docs list these same model IDs and document Kimi/MiMo through OpenAI-compatible chat completions and Qwen through Alibaba chat completions. Current `models.dev` metadata for `opencode-go/qwen3.x-plus` instead reports an Anthropic-compatible provider route. Treat that as a route discrepancy to verify against the upstream code and endpoint before implementation. OpenCode Go public `/models` currently returns model IDs without rich modality metadata, so Go media support is claimed only where contract tests and protected live experiments prove a provider/model transport. In this branch that means `mimo-v2.5` audio/video is supported; `kimi-k2.6` video is not supported through OpenCode Go based on the protected endpoint result.
 
 Official Kimi docs describe Kimi K2.5 as text, image, and video input, with file upload recommended for large videos. Official Alibaba Cloud Model Studio docs describe `qwen3.6-plus` and `qwen3.5-plus` as text, image, and video input, while separately naming `qwen3.5-omni-*` as video models that also support audio input. The design therefore treats Kimi K2.5/K2.6 and Qwen Plus video as visual video unless a provider-specific live test proves that the audio track in a video is consumed.
 
@@ -254,6 +254,8 @@ MiMo-specific expected path:
 - Do not infer capabilities from a bare MiMo marketing suffix. Use provider ID plus model ID plus the current OpenCode model catalog.
 - Do not add model-specific implementation for older MiMo variants. The correct implementation is metadata-driven: every provider/model whose catalog metadata and transport strategy allow audio and/or video should use the same path.
 
+2026-05-15 protected endpoint result: `opencode-go/mimo-v2.5` accepted a known-content MP3 through OpenAI-compatible `input_audio` and returned the spoken phrase "OpenCode Go media test. The secret word is paprika." The same model accepted a known-content MP4 through OpenAI-compatible `video_url` and identified the `PAPRIKA VIDEO TEST` frame with the red rectangle, green square, and dark-blue background. `opencode-go/kimi-k2.6` rejected the same MP4 with `No endpoints found that support input video`, so Kimi video remains unsupported through OpenCode Go in this branch despite model metadata.
+
 Kimi and Qwen expected path:
 
 - `kimi-k2.5` and `kimi-k2.6` are visual-video candidates, not audio candidates, because current metadata lists video but not audio and official Kimi K2.5 docs describe text/image/video input.
@@ -356,8 +358,8 @@ This section records the implementation state after the first multimodal branch 
 - TUI path-paste handling recognizes image, PDF, audio, and video files, renders stable media labels such as `Image`, `PDF`, `Audio`, and `Video`, and continues to use file parts rather than a separate media schema.
 - The read tool can return image, PDF, audio, `audio/mp4`/M4A, and video attachments for supported media files.
 - `MessageV2.toModelMessagesEffect` converts audio/video user file parts into AI SDK file content and strips or extracts media consistently when compaction/tool-result handling requires it.
-- Provider strategy and Gemini staging code distinguish model capability from transport capability. Google API-key user media and extracted tool-result media can be staged through Gemini Files API; Gemini YouTube URLs pass through as URL-backed file parts; custom/OAuth-style Google transports stay inline with explicit size checks.
-- OpenAI-compatible video is explicitly rejected before AI SDK serialization because the currently installed `@ai-sdk/openai-compatible` provider does not serialize `video/mp4` file parts. OpenCode Go MiMo/Kimi/Qwen video is therefore not a supported transport claim in this branch despite positive model metadata.
+- Provider strategy and media staging code distinguish model capability from transport capability. Google API-key user media and extracted tool-result media can be staged through Gemini Files API; Gemini YouTube URLs pass through as URL-backed file parts; custom/OAuth-style Google transports stay inline with explicit size checks; `opencode-go/mimo-v2.5` local video is inlined and converted to OpenAI-compatible `video_url` because the protected endpoint test proved that exact transport.
+- OpenAI-compatible video is explicitly rejected before AI SDK serialization for unconfirmed models because the currently installed `@ai-sdk/openai-compatible` provider does not natively serialize `video/mp4` file parts. Kimi/Qwen/OpenAI-compatible video is therefore not claimed unless a provider/model-specific serializer is implemented and live-tested.
 - Focused tests cover shared app attachment upload, request-part building, server upload, CLI MIME detection, TUI media labels, media read tool behavior, message conversion, provider strategy, Gemini Files staging, YouTube request shape, and audio/video prompt resolution.
 - Chrome E2E has verified the local shared web app with a real uploaded MP4 and Gemini 3.1 Flash Lite. The composer and timeline preserved the `video/mp4` attachment, Gemini answered semantically about the video, the backend stored the browser upload under the OpenCode user data upload directory, and Gemini Files API listed the uploaded `ui-real-clip.mp4` as ACTIVE with a `v1beta/files/...` URI.
 
@@ -368,7 +370,7 @@ This section records the implementation state after the first multimodal branch 
 - CLI is covered for MIME detection and core prompt flow, but provider-limit and oversize behavior should be documented in user-facing errors for non-Gemini inline-only providers.
 - ACP, MCP resource, SDK-only clients, and plugins can submit `FilePartInput` values, but they do not get the shared upload UI or preflight UX. They should be considered API-compatible rather than UX-complete.
 - Gemini API-key path is the best-proven provider path. Gemini OAuth / Antigravity-style providers intentionally do not use Gemini Files API and still need live inline-size and request-shape testing.
-- OpenCode Go MiMo audio remains a metadata-backed inline candidate, but OpenCode Go MiMo/Kimi/Qwen video is currently blocked by AI SDK transport support and is rejected clearly. Kimi K2.5/K2.6 and Qwen Plus visual-video require either a custom provider serializer or upstream AI SDK support plus protected live tests before the branch can claim provider-specific video support.
+- OpenCode Go MiMo v2.5 audio and video are now endpoint-proven and covered by targeted serialization tests. Kimi K2.5/K2.6 and Qwen Plus visual-video remain unsupported/experimental until their actual routed endpoints accept video and a provider serializer exists for the successful request shape.
 - Large local media is not automatically chunked or transcoded. Current behavior is stage through Gemini Files API where the strategy supports it, keep inline only within configured limits for inline-only transports, or reject clearly. Automatic chunking remains a separate design decision.
 
 ### Merge Readiness Criteria
@@ -382,7 +384,7 @@ The branch should not be marked ready to merge until these are true:
 5. TUI or CLI live smoke has verified at least one local audio/video `file://` attachment path.
 6. Gemini API-key Files API staging has been verified with request-shape evidence that the model call uses a Files API URI, not inline base64, for a local MP4. Completed for the Chrome UI smoke by confirming an ACTIVE Gemini Files API entry for the uploaded MP4.
 7. OAuth/Antigravity/custom-Google behavior is either live-tested and documented or explicitly scoped as inline-only/experimental with size-limit rejection.
-8. Remaining provider-specific claims for OpenCode Go, MiMo, Kimi, and Qwen are limited to metadata/strategy support unless protected live tests pass.
+8. Remaining provider-specific claims for OpenCode Go are limited to the protected live evidence: MiMo v2.5 audio/video is supported through the implemented OpenAI-compatible `input_audio`/`video_url` path; Kimi and Qwen video remain non-claims unless protected live tests pass.
 9. An external code review has been run with the project vision, implemented scope, known gaps, and verification evidence included in the review prompt.
 
 ## Implementation Boundary

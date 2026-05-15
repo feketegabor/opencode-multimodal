@@ -1548,7 +1548,7 @@ Run or explicitly defer protected live tests for:
 
 Do not request new credentials until the exact next experiment is ready. Use existing env/auth where available and redact all request/response artifacts.
 
-2026-05-15 result: the live OpenCode Go `mimo-v2.5` MP4 attempt proved the metadata claim is not enough for current transport support. OpenCode Go advertises MiMo v2.5 as audio+video and Kimi/Qwen candidates as video-capable, but those paths currently go through `@ai-sdk/openai-compatible` or `@ai-sdk/anthropic`; the installed `@ai-sdk/openai-compatible` serializer rejects `video/mp4` file parts before the request can reach OpenCode Go. This branch now rejects OpenAI-compatible video explicitly through `ProviderMediaStrategy` and `ProviderTransform` instead of letting the AI SDK fail late. MiMo audio remains metadata-backed inline candidate behavior; OpenCode Go/Kimi/Qwen video is not claimed until a custom provider serializer or upstream AI SDK support exists and passes live tests. Gemini API-key MP4 through Files API is Chrome/CLI live-verified; Gemini YouTube URL is unit-verified through AI SDK serialization and still needs a protected live call before final provider-matrix closure. OAuth/Antigravity Gemini remains inline-only with explicit size gates and no Files API claim.
+2026-05-15 result: reran OpenCode Go protected endpoint tests with known-content media instead of synthetic sine/test-pattern files. `opencode-go/mimo-v2.5` accepted MP3 audio through OpenAI-compatible `input_audio` and returned the spoken phrase `OpenCode Go media test. The secret word is paprika.` It also accepted MP4 video through OpenAI-compatible `video_url` and described the `PAPRIKA VIDEO TEST` frame with the red rectangle, green square, and dark-blue background. `opencode-go/kimi-k2.6` rejected the same MP4 with `No endpoints found that support input video`, so Kimi video is explicitly not claimed through OpenCode Go. Follow-up implementation narrowed the previous OpenAI-compatible video rejection: MiMo v2.5 local video is inlined, transformed into `video_url`, and covered by request-shape tests; unconfirmed OpenAI-compatible video models still reject clearly before the AI SDK serializer. Gemini API-key MP4 through Files API is Chrome/CLI live-verified; Gemini YouTube URL is unit-verified through AI SDK serialization and still needs a protected live call before final provider-matrix closure. OAuth/Antigravity Gemini remains inline-only with explicit size gates and no Files API claim.
 
 - [x] **Step 7: Decide large-file UX**
 
@@ -1596,7 +1596,16 @@ Expected: all commands pass. If broad prompt lifecycle tests still require a lon
 - `packages/opencode`: `bun test --timeout 30000 test/provider/media-staging.test.ts test/provider/media-strategy.test.ts test/tool/read.test.ts test/server/httpapi-file.test.ts` passed (`76 pass, 0 fail`).
 - `packages/opencode`: `bun test --timeout 30000 test/provider/transform.test.ts` passed (`228 pass, 0 fail`).
 - `packages/opencode`: `bun typecheck` passed.
-- Fixes covered: tool-result media now participates in Gemini staging; OpenAI-compatible video is rejected before AI SDK serialization; slash-command media size errors are no longer converted to defects by `Effect.orDie`; raw upload bodies are capped while streaming unknown-length requests; `read` treats `audio/mp4`/M4A as a media attachment.
+- Fixes covered: tool-result media now participates in Gemini staging; OpenAI-compatible video is rejected before AI SDK serialization except the endpoint-proven `opencode-go/mimo-v2.5` `video_url` path; slash-command media size errors are no longer converted to defects by `Effect.orDie`; raw upload bodies are capped while streaming unknown-length requests; `read` treats `audio/mp4`/M4A as a media attachment.
+
+2026-05-15 closeout verification after the MiMo v2.5 video implementation:
+
+- `packages/opencode`: `bun test --timeout 30000 test/provider/media-staging.test.ts test/provider/media-strategy.test.ts test/provider/transform.test.ts` passed (`259 pass, 0 fail`).
+- `packages/opencode`: `bun test --timeout 30000 test/tool/read.test.ts test/server/httpapi-file.test.ts` passed (`51 pass, 0 fail`).
+- `packages/opencode`: `bun test --timeout 30000 test/session/message-v2.test.ts` passed (`42 pass, 0 fail`).
+- `packages/opencode`: `bun test --timeout 30000 test/session/prompt.test.ts -t "resolves OAuth-style Google local video file URLs to data URLs"` passed (`1 pass, 0 fail`).
+- `packages/opencode`: `bun typecheck` passed.
+- One broad combined test command over provider/session/upload/read suites timed out after 184 seconds without useful output; the same coverage was then split into the focused commands above.
 
 - [ ] **Step 9: Run external review before readying PR**
 
@@ -1615,7 +1624,7 @@ Each review prompt must include the design goal, implemented scope, known gaps, 
 Spec coverage:
 - All entry modes are represented by core `FilePart`, CLI/TUI, SDK/HTTP, ACP/tool-result plumbing, and shared app UI tasks. Some surfaces remain API-compatible or code-path covered rather than live-E2E verified; see Task 10.
 - Metadata-driven support is covered by `ProviderMediaStrategy.resolve`.
-- MiMo V2.5 is treated as a live-test candidate, not a hard-coded implementation.
+- MiMo V2.5 is now the endpoint-proven OpenCode Go audio/video path. The implementation uses a narrow provider/model transport allowlist for `opencode-go/mimo-v2.5` because the successful request shape is provider-route-specific; broader MiMo/Kimi/Qwen support still requires metadata plus live endpoint evidence.
 - Kimi/Qwen visual-only video is represented by `videoAudio: "visual-only"`.
 - Secret-backed live experiments are guarded and redacted.
 

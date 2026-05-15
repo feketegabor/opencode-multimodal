@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { convertToOpenAICompatibleChatMessages } from "@ai-sdk/openai-compatible/internal"
 import { ProviderTransform } from "@/provider/transform"
 import { ModelID, ProviderID } from "../../src/provider/schema"
 import type { Provider } from "../../src/provider/provider"
@@ -1475,6 +1476,62 @@ describe("ProviderTransform.message - media transport strategy", () => {
     expect(result[0].content[1]).toEqual({
       type: "text",
       text: 'ERROR: Cannot read "clip.mp4" (@ai-sdk/openai-compatible does not support video file parts). Inform the user.',
+    })
+  })
+
+  test("emits OpenCode Go MiMo video as OpenAI-compatible video_url content", () => {
+    const result = ProviderTransform.message(
+      [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "describe" },
+            { type: "file", mediaType: "video/mp4", filename: "clip.mp4", data: "data:video/mp4;base64,AAA" },
+          ],
+        },
+      ],
+      model({
+        id: ModelID.make("mimo-v2.5"),
+        api: { ...model().api, id: "mimo-v2.5" },
+        capabilities: {
+          ...model().capabilities,
+          input: { text: true, audio: true, image: true, video: true, pdf: false },
+        },
+      }),
+      {},
+    )
+
+    const request = JSON.parse(
+      JSON.stringify(convertToOpenAICompatibleChatMessages(result as Parameters<typeof convertToOpenAICompatibleChatMessages>[0])),
+    )
+    expect(request[0].content).toEqual([
+      { type: "text", text: "describe" },
+      { type: "video_url", video_url: { url: "data:video/mp4;base64,AAA" } },
+    ])
+  })
+
+  test("requires OpenCode Go MiMo file URLs to be staged before serialization", () => {
+    const result = ProviderTransform.message(
+      [
+        {
+          role: "user",
+          content: [{ type: "file", mediaType: "video/mp4", filename: "clip.mp4", data: new URL("file:///tmp/clip.mp4") }],
+        },
+      ],
+      model({
+        id: ModelID.make("mimo-v2.5"),
+        api: { ...model().api, id: "mimo-v2.5" },
+        capabilities: {
+          ...model().capabilities,
+          input: { text: true, audio: true, image: true, video: true, pdf: false },
+        },
+      }),
+      {},
+    )
+
+    expect(result[0].content[0]).toEqual({
+      type: "text",
+      text: 'ERROR: Cannot read "clip.mp4" (OpenCode Go MiMo video must be staged inline before model serialization). Inform the user.',
     })
   })
 

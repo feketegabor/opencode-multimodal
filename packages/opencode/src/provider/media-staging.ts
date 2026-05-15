@@ -213,9 +213,12 @@ async function inlineFilePart(input: Options, part: MessageV2.FilePart) {
 }
 
 async function stageFilePart(input: Options, part: MessageV2.FilePart) {
-  if (input.model.api.npm !== "@ai-sdk/google") return part
+  if (input.model.api.npm !== "@ai-sdk/google" && !ProviderMediaStrategy.openAICompatibleVideoURL(input.model)) return part
   const strategy = ProviderMediaStrategy.resolve(input.model, input.provider)
   const transport = strategy.transport({ mime: part.mime, url: part.url })
+  if (ProviderMediaStrategy.openAICompatibleVideoURL(input.model) && part.mime.startsWith("video/") && transport.type === "inline")
+    return inlineFilePart(input, part)
+  if (input.model.api.npm !== "@ai-sdk/google") return part
   if (customGoogleTransport(input.provider) && transport.type === "inline") return inlineFilePart(input, part)
   if (!shouldStage({ model: input.model, provider: input.provider, part })) return part
   const key = filesApiKey(input.provider)
@@ -295,7 +298,8 @@ export async function upload(input: UploadInput): Promise<UploadResult> {
 }
 
 export async function stageMessages(input: Options) {
-  if (input.model.api.npm !== "@ai-sdk/google") return input.messages
+  if (input.model.api.npm !== "@ai-sdk/google" && !ProviderMediaStrategy.openAICompatibleVideoURL(input.model))
+    return input.messages
 
   let changed = false
   const messages = await Promise.all(

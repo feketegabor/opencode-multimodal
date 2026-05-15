@@ -38,6 +38,14 @@ function scheme(url: string): Scheme | undefined {
   return undefined
 }
 
+export function openAICompatibleVideoURL(model: Provider.Model) {
+  return (
+    model.providerID === "opencode-go" &&
+    model.api.npm === "@ai-sdk/openai-compatible" &&
+    model.api.id === "mimo-v2.5"
+  )
+}
+
 export function resolve(model: Provider.Model, provider?: Provider.Info): Strategy {
   const customGoogle = model.api.npm === "@ai-sdk/google" && customGoogleTransport(provider)
   const input = model.capabilities.input ?? {}
@@ -70,7 +78,7 @@ export function resolve(model: Provider.Model, provider?: Provider.Info): Strate
         return { type: "reject", reason: "Custom Google transports only support inline file data" }
       if (!schemes.has(inputScheme)) return { type: "reject", reason: `Model does not support ${inputScheme} media URLs` }
 
-      if (model.api.npm === "@ai-sdk/openai-compatible" && inputModality === "video") {
+      if (model.api.npm === "@ai-sdk/openai-compatible" && inputModality === "video" && !openAICompatibleVideoURL(model)) {
         return { type: "reject", reason: "@ai-sdk/openai-compatible does not support video file parts" }
       }
 

@@ -400,6 +400,54 @@ function partURL(part: unknown) {
   return undefined
 }
 
+function videoURL(data: unknown, mediaType: string) {
+  if (data instanceof URL) return data.protocol === "file:" ? undefined : data.href
+  if (data instanceof Uint8Array) return `data:${mediaType};base64,${Buffer.from(data).toString("base64")}`
+  if (typeof data !== "string") return undefined
+  if (data.startsWith("file:")) return undefined
+  if (data.startsWith("data:") || data.startsWith("http://") || data.startsWith("https://")) return data
+  return `data:${mediaType};base64,${data}`
+}
+
+function isOpenAICompatibleVideoURLPart(part: unknown) {
+  if (!part || typeof part !== "object") return false
+  const options = (part as { providerOptions?: { openaiCompatible?: { type?: unknown } } }).providerOptions
+    ?.openaiCompatible
+  return options?.type === "video_url"
+}
+
+function openAICompatibleVideoURLParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
+  if (!ProviderMediaStrategy.openAICompatibleVideoURL(model)) return msgs
+  return msgs.map((msg) => {
+    if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
+
+    const content = msg.content.map((part) => {
+      if (part.type !== "file" || !part.mediaType.startsWith("video/")) return part
+      const url = videoURL(part.data, part.mediaType)
+      if (!url)
+        return {
+          type: "text" as const,
+          text: `ERROR: Cannot read "${part.filename ?? "video"}" (OpenCode Go MiMo video must be staged inline before model serialization). Inform the user.`,
+        }
+      return {
+        type: "text" as const,
+        text: "",
+        providerOptions: mergeDeep(part.providerOptions ?? {}, {
+          openaiCompatible: {
+            type: "video_url",
+            text: undefined,
+            video_url: { url },
+          },
+        }),
+      }
+    })
+
+    if (content.length === 1 && isOpenAICompatibleVideoURLPart(content[0]))
+      return { ...msg, content: [{ type: "text" as const, text: "" }, content[0]] }
+    return { ...msg, content }
+  })
+}
+
 function unsupportedParts(msgs: ModelMessage[], model: Provider.Model, provider?: Provider.Info): ModelMessage[] {
   const strategy = ProviderMediaStrategy.resolve(model, provider)
   return msgs.map((msg) => {
@@ -450,7 +498,7 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model, provider?
 }
 
 export function message(msgs: ModelMessage[], model: Provider.Model, options: Record<string, unknown>, provider?: Provider.Info) {
-  msgs = unsupportedParts(msgs, model, provider)
+  msgs = openAICompatibleVideoURLParts(unsupportedParts(msgs, model, provider), model)
   msgs = normalizeMessages(msgs, model, options)
   if (
     (model.providerID === "anthropic" ||

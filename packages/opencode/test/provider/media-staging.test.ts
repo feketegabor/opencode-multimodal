@@ -59,6 +59,22 @@ const googleModel: Provider.Model = {
   release_date: "2026-01-01",
 }
 
+const opencodeGoMiMoModel: Provider.Model = {
+  ...googleModel,
+  id: ModelID.make("mimo-v2.5"),
+  providerID: ProviderID.make("opencode-go"),
+  api: {
+    id: "mimo-v2.5",
+    url: "https://opencode.ai/zen/go/v1",
+    npm: "@ai-sdk/openai-compatible",
+  },
+  name: "MiMo v2.5",
+  capabilities: {
+    ...googleModel.capabilities,
+    input: { text: true, image: true, audio: true, video: true, pdf: false },
+  },
+}
+
 const provider: Provider.Info = {
   id: ProviderID.make("google"),
   name: "Google",
@@ -67,6 +83,12 @@ const provider: Provider.Info = {
   key: "secret-key",
   options: {},
   models: {},
+}
+
+const opencodeGoProvider: Provider.Info = {
+  ...provider,
+  id: ProviderID.make("opencode-go"),
+  name: "OpenCode Go",
 }
 
 const envOnlyProvider: Provider.Info = {
@@ -338,6 +360,29 @@ describe("GeminiMediaStaging.stageMessages", () => {
         },
       }),
     ).rejects.toThrow("exceeds inline media limit")
+  })
+
+  test("inlines OpenCode Go MiMo local video so the provider transform can emit video_url", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-go-mimo-video-inline-"))
+    try {
+      const file = path.join(dir, "mimo-clip.mp4")
+      await fs.writeFile(file, "mimo-video")
+
+      const result = await GeminiMediaStaging.stageMessages({
+        model: opencodeGoMiMoModel,
+        provider: opencodeGoProvider,
+        messages: [userWithFile(pathToFileURL(file).href, file)],
+        upload: async () => {
+          throw new Error("unexpected Gemini Files upload")
+        },
+      })
+
+      expect((result[0].parts[0] as MessageV2.FilePart).url).toBe(
+        `data:video/mp4;base64,${Buffer.from("mimo-video").toString("base64")}`,
+      )
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true })
+    }
   })
 
   test("keeps custom Google fetch inline even when an env API key exists", async () => {

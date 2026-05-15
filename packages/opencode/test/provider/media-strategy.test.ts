@@ -44,7 +44,7 @@ function model(override: Partial<Provider.Model> = {}): Provider.Model {
 }
 
 describe("ProviderMediaStrategy.resolve", () => {
-  test("allows metadata-backed inline audio but rejects video for openai-compatible transports", () => {
+  test("allows OpenCode Go MiMo audio and video through the confirmed OpenAI-compatible endpoint shape", () => {
     const strategy = ProviderMediaStrategy.resolve(model())
 
     expect(strategy.accepted.has("audio")).toBe(true)
@@ -53,6 +53,23 @@ describe("ProviderMediaStrategy.resolve", () => {
     expect(strategy.transport({ mime: "audio/mpeg", url: "data:audio/mpeg;base64,Zm9v" })).toStrictEqual({
       type: "inline",
     })
+    expect(strategy.transport({ mime: "video/mp4", url: "data:video/mp4;base64,Zm9v" })).toStrictEqual({
+      type: "inline",
+    })
+  })
+
+  test("rejects unconfirmed openai-compatible video transports", () => {
+    const strategy = ProviderMediaStrategy.resolve(
+      model({
+        id: ModelID.make("kimi-k2.6"),
+        api: { ...model().api, id: "kimi-k2.6" },
+        capabilities: {
+          ...model().capabilities,
+          input: { text: true, image: true, audio: false, video: true, pdf: false },
+        },
+      }),
+    )
+
     expect(strategy.transport({ mime: "video/mp4", url: "data:video/mp4;base64,Zm9v" })).toStrictEqual({
       type: "reject",
       reason: "@ai-sdk/openai-compatible does not support video file parts",
