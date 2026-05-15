@@ -21,6 +21,12 @@ describe("message-file", () => {
     expect(attached(file())).toBe(false)
   })
 
+  test("treats uploaded browser media file URLs as attachments", () => {
+    expect(attached(file({ mime: "video/mp4", url: "file:///uploads/clip.mp4" }))).toBe(true)
+    expect(attached(file({ mime: "audio/mpeg", url: "file:///uploads/voice.mp3" }))).toBe(true)
+    expect(attached(file({ mime: "text/plain", url: "file:///repo/README.txt" }))).toBe(false)
+  })
+
   test("treats only non-attachment source ranges as inline references", () => {
     expect(
       inline(
