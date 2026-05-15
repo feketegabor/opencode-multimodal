@@ -340,6 +340,36 @@ describe("GeminiMediaStaging.stageMessages", () => {
     ).rejects.toThrow("exceeds inline media limit")
   })
 
+  test("keeps custom Google fetch inline even when an env API key exists", async () => {
+    const original = process.env.GEMINI_API_KEY
+    process.env.GEMINI_API_KEY = "env-secret-key"
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-gemini-custom-fetch-inline-"))
+    try {
+      const file = path.join(dir, "custom-fetch-clip.mp4")
+      await fs.writeFile(file, "custom-fetch-video")
+
+      const result = await GeminiMediaStaging.stageMessages({
+        model: googleModel,
+        provider: {
+          ...envOnlyProvider,
+          options: { fetch: async () => new Response() },
+        },
+        messages: [userWithFile(pathToFileURL(file).href, file)],
+        upload: async () => {
+          throw new Error("unexpected Gemini Files upload")
+        },
+      })
+
+      expect((result[0].parts[0] as MessageV2.FilePart).url).toBe(
+        `data:video/mp4;base64,${Buffer.from("custom-fetch-video").toString("base64")}`,
+      )
+    } finally {
+      if (original === undefined) delete process.env.GEMINI_API_KEY
+      else process.env.GEMINI_API_KEY = original
+      await fs.rm(dir, { recursive: true, force: true })
+    }
+  })
+
   test("does not upload media rejected by model metadata", async () => {
     const result = await GeminiMediaStaging.stageMessages({
       model: {

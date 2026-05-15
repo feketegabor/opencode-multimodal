@@ -12,7 +12,7 @@ export type Strategy = {
 }
 
 function customGoogleTransport(provider?: Provider.Info) {
-  return provider?.options.apiKey === ""
+  return provider?.options.apiKey === "" || typeof provider?.options.fetch === "function"
 }
 
 function modality(mime: string): Modality | undefined {

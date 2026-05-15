@@ -44,10 +44,11 @@ type GeminiFile = {
 const CUSTOM_GOOGLE_INLINE_MAX_BYTES = 50 * 1024 * 1024
 
 function customGoogleTransport(provider: Provider.Info) {
-  return provider.options.apiKey === ""
+  return provider.options.apiKey === "" || typeof provider.options.fetch === "function"
 }
 
-function apiKey(provider: Provider.Info) {
+function filesApiKey(provider: Provider.Info) {
+  if (customGoogleTransport(provider)) return undefined
   if (typeof provider.options.apiKey === "string" && provider.options.apiKey !== "") return provider.options.apiKey
   if (provider.key) return provider.key
   return provider.env.map((key) => process.env[key]).find((value) => value)
@@ -217,7 +218,7 @@ async function stageFilePart(input: Options, part: MessageV2.FilePart) {
   const transport = strategy.transport({ mime: part.mime, url: part.url })
   if (customGoogleTransport(input.provider) && transport.type === "inline") return inlineFilePart(input, part)
   if (!shouldStage({ model: input.model, provider: input.provider, part })) return part
-  const key = apiKey(input.provider)
+  const key = filesApiKey(input.provider)
   if (!key) throw new Error("Gemini Files staging requires a Google API key")
   const uploadInput = {
     apiKey: key,

@@ -214,6 +214,40 @@ describe("ProviderMediaStrategy.resolve", () => {
     })
   })
 
+  test("treats any custom Google fetch as inline-only even when apiKey is not empty", () => {
+    const strategy = ProviderMediaStrategy.resolve(
+      model({
+        providerID: ProviderID.make("google"),
+        api: {
+          id: "gemini-3-pro",
+          url: "https://generativelanguage.googleapis.com",
+          npm: "@ai-sdk/google",
+        },
+        capabilities: {
+          ...model().capabilities,
+          input: { ...model().capabilities.input, pdf: true },
+        },
+      }),
+      {
+        id: ProviderID.make("google"),
+        name: "Google",
+        source: "env",
+        env: ["GEMINI_API_KEY"],
+        key: "env-secret",
+        options: { fetch: async () => new Response() },
+        models: {},
+      },
+    )
+
+    expect(strategy.transport({ mime: "video/mp4", url: "file:///tmp/clip.mp4" })).toStrictEqual({
+      type: "inline",
+    })
+    expect(strategy.transport({ mime: "video/mp4", url: "https://youtu.be/abc123" })).toStrictEqual({
+      type: "reject",
+      reason: "Custom Google transports only support inline file data",
+    })
+  })
+
   test("uses Gemini Files for Google local audio video and PDF files", () => {
     const strategy = ProviderMediaStrategy.resolve(
       model({
